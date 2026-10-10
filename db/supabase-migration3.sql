@@ -135,7 +135,7 @@ CREATE POLICY "notifications_own" ON public.notifications
 
 -- tasks: milik sendiri saja.
 CREATE POLICY "tasks_own" ON public.tasks
-  FOR ALL TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+  FOR ALL TO authenticated USING (owner_user_id = auth.uid()) WITH CHECK (owner_user_id = auth.uid());
 
 -- audit_log: anggota grup terkait boleh baca, semua login boleh tulis.
 CREATE POLICY "audit_read_auth" ON public.audit_log
