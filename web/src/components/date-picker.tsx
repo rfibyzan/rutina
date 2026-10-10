@@ -132,11 +132,15 @@ export function DatePicker({ title, titleLabel, open, onOpenChange, baseYear, ba
     <div
       ref={popRef}
       className="x-datepick-pop"
+      data-portal="datepicker"
       role="dialog"
       aria-modal="false"
       aria-label="Pilih tanggal"
       style={{
         position: "fixed",
+        fontFamily: "var(--x-font)",
+        color: "var(--ink)",
+        boxSizing: "border-box",
         left: pos?.left ?? 8,
         top: pos?.top ?? 8,
         width: pos?.width ?? Math.min(300, typeof window !== "undefined" ? window.innerWidth * 0.82 : 300),
@@ -145,10 +149,10 @@ export function DatePicker({ title, titleLabel, open, onOpenChange, baseYear, ba
     >
       {mode === "day" && (
         <>
-          <div className="x-dp-head">
+          <div className="x-dp-head" style={{ display: "flex", alignItems: "center", flexWrap: "nowrap", gap: 2 }}>
             <button type="button" aria-label="Tahun sebelumnya" onClick={() => setVy((y) => y - 1)}>«</button>
             <button type="button" aria-label="Bulan sebelumnya" onClick={() => { if (vm === 0) { setVm(11); setVy((y) => y - 1); } else setVm(vm - 1); }}>‹</button>
-            <span className="x-dp-title">
+            <span className="x-dp-title" style={{ flex: 1, minWidth: 0, display: "inline-flex", justifyContent: "center", alignItems: "center", whiteSpace: "nowrap", gap: 2 }}>
               <button type="button" onClick={() => setMode("month")} aria-label="Pilih bulan">{MON_LONG[vm]}</button>
               {" "}
               <button type="button" onClick={() => setMode("year")} aria-label="Pilih tahun">{vy}</button>
@@ -183,9 +187,9 @@ export function DatePicker({ title, titleLabel, open, onOpenChange, baseYear, ba
       )}
       {mode === "month" && (
         <>
-          <div className="x-dp-head">
+          <div className="x-dp-head" style={{ display: "flex", alignItems: "center", flexWrap: "nowrap", gap: 2 }}>
             <button type="button" aria-label="Tahun sebelumnya" onClick={() => setVy((y) => y - 1)}>«</button>
-            <span className="x-dp-title"><button type="button" onClick={() => setMode("year")} aria-label="Pilih tahun">{vy}</button></span>
+            <span className="x-dp-title" style={{ flex: 1, minWidth: 0, display: "inline-flex", justifyContent: "center", alignItems: "center", whiteSpace: "nowrap", gap: 2 }}><button type="button" onClick={() => setMode("year")} aria-label="Pilih tahun">{vy}</button></span>
             <button type="button" aria-label="Tahun berikutnya" onClick={() => setVy((y) => y + 1)}>»</button>
           </div>
           <div className="x-dp-months">
@@ -197,9 +201,9 @@ export function DatePicker({ title, titleLabel, open, onOpenChange, baseYear, ba
       )}
       {mode === "year" && (
         <>
-          <div className="x-dp-head">
+          <div className="x-dp-head" style={{ display: "flex", alignItems: "center", flexWrap: "nowrap", gap: 2 }}>
             <button type="button" aria-label="Rentang tahun sebelumnya" onClick={() => setVy((y) => y - 12)}>«</button>
-            <span className="x-dp-title">{yearStart}–{yearStart + 11}</span>
+            <span className="x-dp-title" style={{ flex: 1, minWidth: 0, display: "inline-flex", justifyContent: "center", alignItems: "center", whiteSpace: "nowrap", gap: 2 }}>{yearStart}–{yearStart + 11}</span>
             <button type="button" aria-label="Rentang tahun berikutnya" onClick={() => setVy((y) => y + 12)}>»</button>
           </div>
           <div className="x-dp-months">
@@ -228,7 +232,7 @@ export function DatePicker({ title, titleLabel, open, onOpenChange, baseYear, ba
           if (!disabled) onOpenChange(!open);
         }}
       >
-        <span>{title}</span>
+        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</span>
         <span className="x-caret" aria-hidden="true">
           {isField ? (
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
