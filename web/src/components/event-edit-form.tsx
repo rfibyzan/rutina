@@ -2,15 +2,18 @@
 
 import { useState } from "react";
 import { PrioritySegment } from "@/components/ui";
+import { EventWhenPicker } from "@/components/when-picker";
 import { useStore, useToast } from "@/lib/store";
 import type { EventItem, Priority } from "@/lib/data";
 
 export function EventEditForm({
   event,
   onDone,
+  idPrefix = "ee",
 }: {
   event: EventItem;
   onDone?: () => void;
+  idPrefix?: string;
 }) {
   const { updateEvent } = useStore();
   const { say } = useToast();
@@ -57,31 +60,32 @@ export function EventEditForm({
     >
       <h2>Edit Event</h2>
       <div className="x-field">
-        <label htmlFor="ee-judul">Judul</label>
-        <input id="ee-judul" className="x-input" value={title} onChange={(e) => setTitle(e.target.value)} />
+        <label htmlFor={`${idPrefix}-judul`}>Judul</label>
+        <input id={`${idPrefix}-judul`} className="x-input" value={title} onChange={(e) => setTitle(e.target.value)} />
       </div>
       <div className="x-field">
-        <label htmlFor="ee-tgl">Tanggal</label>
-        <input id="ee-tgl" className="x-input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        <span>Waktu</span>
+        <EventWhenPicker
+          idPrefix={idPrefix}
+          date={date}
+          start={start}
+          end={end}
+          onDateChange={setDate}
+          onStartChange={setStart}
+          onEndChange={setEnd}
+        />
       </div>
       <div className="x-field">
-        <span>Mulai–Selesai</span>
-        <div className="x-two">
-          <input className="x-input" type="time" value={start} onChange={(e) => setStart(e.target.value)} aria-label="Jam mulai" />
-          <input className="x-input" type="time" value={end} onChange={(e) => setEnd(e.target.value)} aria-label="Jam selesai" />
-        </div>
-      </div>
-      <div className="x-field">
-        <label htmlFor="ee-lokasi">Lokasi</label>
-        <input id="ee-lokasi" className="x-input" value={location} onChange={(e) => setLocation(e.target.value)} />
+        <label htmlFor={`${idPrefix}-lokasi`}>Lokasi</label>
+        <input id={`${idPrefix}-lokasi`} className="x-input" value={location} onChange={(e) => setLocation(e.target.value)} />
       </div>
       <div className="x-field">
         <span>Prioritas</span>
         <PrioritySegment value={priority} onChange={setPriority} />
       </div>
       <div className="x-field">
-        <label htmlFor="ee-cat">Catatan</label>
-        <textarea id="ee-cat" className="x-input" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+        <label htmlFor={`${idPrefix}-cat`}>Catatan</label>
+        <textarea id={`${idPrefix}-cat`} className="x-input" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
       </div>
       <div className="x-btns" style={{ marginTop: 16 }}>
         <button type="submit" className="x-btn" disabled={saving}>

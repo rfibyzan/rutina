@@ -50,7 +50,7 @@ export function StatusChip({ status }: { status: EventItem["status"] }) {
 }
 
 export function EventRow({ event, index = 0, showDate = false }: { event: EventItem; index?: number; showDate?: boolean }) {
-  const colorVar = `var(--p${event.priority})`;
+  const colorVar = event.groupColor || `var(--p${event.priority})`;
   return (
     <Link className="x-event x-rise" style={{ ["--c" as string]: colorVar, ["--i" as string]: index } as React.CSSProperties} href={`/event/${event.id}`}>
       <time>{event.start}</time>
