@@ -98,15 +98,9 @@ export default function GrupPage() {
       return;
     }
     setError("");
-    const { data, error } = await supabase.from("groups").select("id").eq("invite_code", code.trim().toUpperCase()).maybeSingle();
-    if (error || !data) {
-      setError("Kode tidak ditemukan.");
-      return;
-    }
-    const gid = (data as { id: string }).id;
-    const { error: mErr } = await supabase.from("group_members").upsert({ group_id: gid, user_id: user.id, role: "viewer" }, { onConflict: "group_id,user_id" });
-    if (mErr) {
-      setError(mErr.message);
+    const { data: gid, error } = await supabase.rpc('join_group_by_code', { p_code: code.trim() });
+    if (error || !gid) {
+      setError('Kode tidak ditemukan.');
       return;
     }
     setCode("");

@@ -28,3 +28,5 @@ Aplikasi web dan Android saat ini memakai data demo lokal
 (web: `localStorage`, Android: Room) dengan bentuk yang sama
 seperti tabel di atas, sehingga migrasi ke Postgres hanya
 mengganti lapisan baca/tulis.
+
+Jalankan `supabase-migration4.sql` setelah migration3 di Supabase SQL Editor (perbaikan Buat Grup, Gabung via Kode, RLS users/subtasks/attendees/approvals).
