@@ -76,6 +76,25 @@ export interface TaskItem {
   priority: Priority;
   done: boolean;
   note: string;
+  /** Subtugas. Jika ada, status `done` tugas mengikuti semua subtugas. */
+  subtasks: TaskSubtask[];
+}
+
+export interface TaskSubtask {
+  id: string;
+  title: string;
+  done: boolean;
+}
+
+/** Aturan status induk: ada subtugas -> selesai jika semuanya selesai; tanpa subtugas -> tetap. */
+export function deriveTaskDone(current: boolean, subs: TaskSubtask[]): boolean {
+  return subs.length > 0 ? subs.every((s) => s.done) : current;
+}
+
+/** Label progres subtugas, mis. " · 2/3"; kosong bila tanpa subtugas. */
+export function subProgress(t: { subtasks: TaskSubtask[] }): string {
+  const n = t.subtasks.length;
+  return n ? ` · ${t.subtasks.filter((s) => s.done).length}/${n}` : "";
 }
 
 export interface MyGroup {

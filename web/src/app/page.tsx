@@ -171,28 +171,23 @@ function BluePanel({
 
   useEffect(() => () => cancelAnimationFrame(rafRef.current), []);
 
-  const onMove = (e: React.PointerEvent) => {
-    const el = panelRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const nx = (e.clientX - rect.left) / Math.max(1, rect.width) - 0.5;
-    const ny = (e.clientY - rect.top) / Math.max(1, rect.height) - 0.5;
-    cancelAnimationFrame(rafRef.current);
-    rafRef.current = requestAnimationFrame(() => {
-      el.style.setProperty("--mx", nx.toFixed(3));
-      el.style.setProperty("--my", ny.toFixed(3));
-    });
-  };
-
-  const onLeave = () => {
-    const el = panelRef.current;
-    if (!el) return;
-    cancelAnimationFrame(rafRef.current);
-    rafRef.current = requestAnimationFrame(() => {
-      el.style.setProperty("--mx", "0");
-      el.style.setProperty("--my", "0");
-    });
-  };
+  // Parallax mengikuti kursor di seluruh halaman (termasuk area form putih),
+  // jadi gerakan asterisk tidak berhenti saat kursor keluar dari panel biru.
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      const el = panelRef.current;
+      if (!el) return;
+      const nx = e.clientX / Math.max(1, window.innerWidth) - 0.5;
+      const ny = e.clientY / Math.max(1, window.innerHeight) - 0.5;
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(() => {
+        el.style.setProperty("--mx", nx.toFixed(3));
+        el.style.setProperty("--my", ny.toFixed(3));
+      });
+    };
+    window.addEventListener("pointermove", onMove);
+    return () => window.removeEventListener("pointermove", onMove);
+  }, []);
 
   const onBurst = () => {
     setBurst(true);
@@ -202,8 +197,6 @@ function BluePanel({
   return (
     <div
       ref={panelRef}
-      onPointerMove={onMove}
-      onPointerLeave={onLeave}
       onClick={onBurst}
       className={`${className}${burst ? " is-burst" : ""}`}
     >

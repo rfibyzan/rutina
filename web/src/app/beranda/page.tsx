@@ -8,6 +8,7 @@ import { TaskDetail } from "@/components/task-detail";
 import { DesktopShell, MobileShell } from "@/components/shell";
 import { useStore } from "@/lib/store";
 import type { TaskItem } from "@/lib/data";
+import { subProgress } from "@/lib/data";
 
 function dayKey(d: Date): string {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
@@ -84,6 +85,8 @@ function TaskCard({
         className="x-check-pop"
         checked={task.done}
         onChange={done}
+        disabled={task.subtasks.length > 0}
+        title={task.subtasks.length > 0 ? "Selesai otomatis saat semua subtugas selesai" : undefined}
         onClick={(e) => e.stopPropagation()}
         aria-label={`Selesaikan ${task.title}`}
       />
@@ -91,7 +94,7 @@ function TaskCard({
         <b>{task.title}</b>
         {task.dueAt && task.dueAt < nowIso && <span className="x-chip x-chip--p1" style={{ marginLeft: 6 }}>Terlambat</span>}
         <br />
-        <small style={{ color: "var(--ink-2)" }}>{task.dueLabel} · {task.group}</small>
+        <small style={{ color: "var(--ink-2)" }}>{task.dueLabel} · {task.group}{subProgress(task)}</small>
       </span>
       <span style={{ marginLeft: "auto" }}>
         <PriorityChip value={task.priority} short />

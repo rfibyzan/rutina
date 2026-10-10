@@ -17,6 +17,7 @@ import { DatePicker } from "@/components/date-picker";
 import { layoutDay, type DaySrc } from "@/components/cal-layout";
 import { useStore, useToast } from "@/lib/store";
 import type { EventItem, Priority, TaskItem } from "@/lib/data";
+import { subProgress } from "@/lib/data";
 
 const DOW = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
 const MON_LONG = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
@@ -821,12 +822,14 @@ export default function KalenderPage() {
                 type="checkbox"
                 checked={t.done}
                 onChange={() => toggleTask(t.id)}
+                disabled={t.subtasks.length > 0}
+                title={t.subtasks.length > 0 ? "Selesai otomatis saat semua subtugas selesai" : undefined}
                 onClick={(e) => e.stopPropagation()}
                 aria-label={`Selesaikan ${t.title}`}
                 style={{ width: 18, height: 18, accentColor: "var(--primary)" }}
               />
               <b>{taskHM(t)}</b>
-              <span className="x-task-title">{t.title}</span>
+              <span className="x-task-title">{t.title}{subProgress(t)}</span>
               <span className="x-tag">Tenggat</span>
             </div>
           ))}
@@ -928,10 +931,12 @@ export default function KalenderPage() {
           type="checkbox"
           checked={t.done}
           onChange={() => toggleTask(t.id)}
+                disabled={t.subtasks.length > 0}
+                title={t.subtasks.length > 0 ? "Selesai otomatis saat semua subtugas selesai" : undefined}
           aria-label={`Selesaikan ${t.title}`}
           onClick={(ev) => ev.stopPropagation()}
         />
-        <span className="x-task-title">{t.title}</span>
+        <span className="x-task-title">{t.title}{subProgress(t)}</span>
       </div>
     );
   };
@@ -983,6 +988,8 @@ export default function KalenderPage() {
                   type="checkbox"
                   checked={t.done}
                   onChange={() => toggleTask(t.id)}
+                disabled={t.subtasks.length > 0}
+                title={t.subtasks.length > 0 ? "Selesai otomatis saat semua subtugas selesai" : undefined}
                   onClick={(ev) => ev.stopPropagation()}
                   aria-label={`Selesaikan ${t.title}`}
                 />
@@ -1270,11 +1277,13 @@ export default function KalenderPage() {
                           type="checkbox"
                           checked={t.done}
                           onChange={() => toggleTask(t.id)}
+                disabled={t.subtasks.length > 0}
+                title={t.subtasks.length > 0 ? "Selesai otomatis saat semua subtugas selesai" : undefined}
                           onClick={(ev) => ev.stopPropagation()}
                           aria-label={`Selesaikan ${t.title}`}
                           tabIndex={-1}
                         />
-                        <span>{t.title}</span>
+                        <span>{t.title}{subProgress(t)}</span>
                       </button>
                     ))}
                     {rest > 0 && (
@@ -1296,6 +1305,8 @@ export default function KalenderPage() {
                               type="checkbox"
                               checked={t.done}
                               onChange={() => toggleTask(t.id)}
+                disabled={t.subtasks.length > 0}
+                title={t.subtasks.length > 0 ? "Selesai otomatis saat semua subtugas selesai" : undefined}
                               onClick={(ev) => ev.stopPropagation()}
                               aria-label={`Selesaikan ${t.title}`}
                             />

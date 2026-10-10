@@ -278,6 +278,8 @@ export function NewTaskForm({ prefill, onSaved }: { prefill: NewPrefill; onSaved
   const [noDeadline, setNoDeadline] = useState(false);
   const [priority, setPriority] = useState<Priority>(3);
   const [note, setNote] = useState("");
+  const [subs, setSubs] = useState<string[]>([]);
+  const [subDraft, setSubDraft] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -309,6 +311,7 @@ export function NewTaskForm({ prefill, onSaved }: { prefill: NewPrefill; onSaved
       dueAt: noDeadline ? null : date ? toISODate(date, time || "23:59") : null,
       priority,
       note: note.trim(),
+      subtasks: [...subs, subDraft].map((x) => x.trim()).filter(Boolean),
     });
     setSaving(false);
     if (!ok) {
@@ -371,6 +374,51 @@ export function NewTaskForm({ prefill, onSaved }: { prefill: NewPrefill; onSaved
             <div className="x-field">
               <label htmlFor="nt-cat">Catatan</label>
               <textarea id="nt-cat" className="x-input" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+            </div>
+            <div className="x-field">
+              <label htmlFor="nt-sub">Subtugas (opsional)</label>
+              {subs.map((x, i) => (
+                <div key={`${i}-${x}`} className="x-subtask-row">
+                  <span className="x-subtask-title">{x}</span>
+                  <button type="button" className="x-subtask-del" aria-label={`Hapus subtugas ${x}`} onClick={() => setSubs((p) => p.filter((_, j) => j !== i))}>
+                    ✕
+                  </button>
+                </div>
+              ))}
+              <div className="x-subtask-add">
+                <input
+                  id="nt-sub"
+                  className="x-input"
+                  placeholder="Ketik subtugas, lalu Enter"
+                  value={subDraft}
+                  onChange={(e) => setSubDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !(e.ctrlKey || e.metaKey)) {
+                      e.preventDefault();
+                      const v = subDraft.trim();
+                      if (v) {
+                        setSubs((p) => [...p, v]);
+                        setSubDraft("");
+                      }
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className="x-btn x-btn--outline x-btn--sm"
+                  style={{ width: "auto" }}
+                  disabled={!subDraft.trim()}
+                  onClick={() => {
+                    const v = subDraft.trim();
+                    if (v) {
+                      setSubs((p) => [...p, v]);
+                      setSubDraft("");
+                    }
+                  }}
+                >
+                  Tambah
+                </button>
+              </div>
             </div>
           </div>
         </div>

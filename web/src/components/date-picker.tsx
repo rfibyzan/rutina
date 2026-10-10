@@ -224,6 +224,7 @@ export function DatePicker({ title, titleLabel, open, onOpenChange, baseYear, ba
       <button
         type="button"
         className={isField ? "x-datepick-btn x-datepick-btn--field" : "x-datepick-btn"}
+        style={isField ? { display: "flex", width: "100%", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 14, fontWeight: 500, letterSpacing: "normal", margin: 0, boxSizing: "border-box" } : undefined}
         aria-expanded={open}
         aria-haspopup="dialog"
         aria-label={`${titleLabel}: ${title}. Buka pemilih tanggal`}
