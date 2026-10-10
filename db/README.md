@@ -30,3 +30,4 @@ seperti tabel di atas, sehingga migrasi ke Postgres hanya
 mengganti lapisan baca/tulis.
 
 Jalankan `supabase-migration4.sql` setelah migration3 di Supabase SQL Editor (perbaikan Buat Grup, Gabung via Kode, RLS users/subtasks/attendees/approvals).
+Lalu jalankan supabase-migration5.sql (persetujuan hanya owner/admin, audit_log hanya anggota grup).
