@@ -243,16 +243,16 @@ a.x-card { text-decoration: none; color: inherit; display: block; }
 .x-top .x-input { width: 190px; padding: 8px 12px; }
 .x-calbody { flex: 1; display: grid; grid-template-columns: 1fr 320px; min-height: 0; }
 .x-wk { --hr: 44px; padding: 0 12px 24px; min-width: 0; overflow-x: auto; }
-.x-wk-head, .x-wk-body { display: grid; grid-template-columns: 48px repeat(4, 1fr) 1.8fr repeat(2, 1fr); min-width: 720px; }
+.x-wk-head, .x-wk-body { display: grid; grid-template-columns: 48px repeat(7, minmax(0, 1fr)); min-width: 720px; }
 .x-wk-head > div { display: grid; justify-items: center; gap: 2px; padding: 8px 0; font-size: 12px; color: var(--ink-2); }
 .x-wk-head b { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 6px; font-size: 17px; color: var(--ink); }
 .x-wk-head .is-today b { background: var(--primary); color: #fff; }
-.x-wk-body { border-top: var(--x-border); border-bottom: var(--x-border); }
+.x-wk-body { border-top: var(--x-border); border-bottom: var(--x-border); max-height: calc(100dvh - 220px); overflow-y: auto; }
 .x-hrs { position: relative; }
 .x-hrs span { display: block; height: var(--hr); font-size: 12px; color: var(--ink-2); text-align: right; padding-right: 6px; border-bottom: 1px solid var(--muted); }
-.x-col { position: relative; border-left: 1px solid var(--muted); min-height: calc(15 * var(--hr)); }
+.x-col { position: relative; border-left: 1px solid var(--muted); min-height: calc(24 * var(--hr)); }
 .x-col.is-today { background: rgba(232, 238, 250, 0.6); }
-.x-ev { position: absolute; left: 3px; right: 3px; top: calc((var(--s) - 7) * var(--hr) + 2px); height: calc(var(--h) * var(--hr) - 4px); display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 4px 6px; overflow: hidden; border-left: 4px solid var(--c); border-radius: 6px; background: var(--surface); border-top: 2px solid var(--muted); border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); font-size: 12px; line-height: 1.2; text-decoration: none; color: var(--ink); }
+.x-ev { position: absolute; left: 3px; right: 3px; top: calc(var(--s) * var(--hr) + 2px); height: calc(var(--h) * var(--hr) - 4px); display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 4px 6px; overflow: hidden; border-left: 4px solid var(--c); border-radius: 6px; background: var(--surface); border-top: 2px solid var(--muted); border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); font-size: 12px; line-height: 1.2; text-decoration: none; color: var(--ink); }
 .x-ev b { font-weight: 700; }
 .x-ev time { color: var(--ink-2); }
 .x-ev .x-chip { padding: 0 6px; font-size: 12px; border-width: 0; }
@@ -262,6 +262,79 @@ a.x-card { text-decoration: none; color: inherit; display: block; }
 .x-ev--l { right: 46%; } .x-ev--r { left: 56%; }
 .x-flag { border-radius: 999px; padding: 0 6px; font-weight: 700; background: var(--pending); color: var(--ink); }
 .x-flag--bad { background: #C42520; color: #fff; }
+
+/* Tugas di kalender: penanda tenggat (pill tipis) di jam tenggatnya. */
+.x-task { position: absolute; left: 3px; right: 3px; top: calc(var(--s) * var(--hr) + 2px); min-height: 38px; display: flex; flex-wrap: wrap; align-items: center; column-gap: 6px; row-gap: 0; padding: 3px 8px; border-radius: 8px; background: var(--surface); border: 2px solid var(--c); font-size: 12px; line-height: 1.2; color: var(--ink); z-index: 0; }
+.x-task input { width: 16px; height: 16px; accent-color: var(--primary); flex: 0 0 auto; cursor: pointer; }
+.x-task .x-task-title { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; transition: opacity 150ms ease; }
+.x-task time { color: var(--ink-2); white-space: nowrap; font-size: 11px; flex-basis: 100%; padding-left: 22px; }
+.x-task.is-done { opacity: 0.6; }
+.x-task.is-done .x-task-title { text-decoration: line-through; color: var(--ink-2); animation: x-strike 200ms ease-out; }
+.x-mini.is-done { opacity: 0.6; }
+.x-mini.is-done .x-task-title { text-decoration: line-through; color: var(--ink-2); }
+
+/* ---- Animasi UI (ringan, hanya transform/opacity) ---- */
+@keyframes x-fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes x-rise-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes x-pop { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+@keyframes x-sheet-up { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes x-back-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes x-toast-in { from { opacity: 0; transform: translateX(-50%) translateY(16px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+@keyframes x-pulse-once { 0% { transform: scale(1); } 40% { transform: scale(1.14); } 100% { transform: scale(1); } }
+@keyframes x-spin-slow { to { transform: rotate(360deg); } }
+@keyframes x-float-y { 0%, 100% { transform: translateY(-8px) translateX(0); } 50% { transform: translateY(8px) translateX(6px); } }
+@keyframes x-strike { from { opacity: 0.2; } to { opacity: 1; } }
+
+/* Transisi masuk halaman */
+.r-screen { animation: x-fade-up 220ms ease-out both; }
+.r-dcenter, .x-calbody { animation: x-fade-up 220ms ease-out both; }
+
+/* Stagger kartu/daftar via --i inline */
+.x-rise { animation: x-rise-in 220ms ease-out both; animation-delay: calc(var(--i, 0) * 30ms); }
+
+/* Hover/press tombol & chip */
+.x-btn, .x-chip { transition: transform 150ms ease, box-shadow 150ms ease, background-color 150ms ease; }
+.x-btn:hover, .x-chip:hover { transform: translateY(-1px); }
+.x-btn:active, .x-chip:active { transform: scale(0.97); }
+.x-card, .x-event { transition: transform 150ms ease, box-shadow 150ms ease; }
+.x-card:hover, a.x-card:hover, .x-event:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(7, 54, 147, 0.12); }
+
+/* Modal / bottom sheet */
+.x-modal-back { animation: x-back-fade 180ms ease-out both; }
+.x-modal { animation: x-pop 180ms ease-out both; }
+@media (max-width: 1023px) {
+  .x-modal { animation: x-sheet-up 220ms ease-out both; }
+}
+
+/* Toast slide-in dari bawah */
+.x-toast.is-on { animation: x-toast-in 220ms ease-out both; }
+
+/* Hari ini di header kalender: pulse halus sekali saat load */
+.x-today-pulse b { animation: x-pulse-once 800ms ease-out 1; }
+
+/* ---- Login: asterisk hanya di panel biru, teks di atas ---- */
+.x-login, .x-login-brand { position: relative; overflow: hidden; isolation: isolate; }
+.x-login .x-deco, .x-login-brand .x-deco, .x-ast-float { pointer-events: none; z-index: 0; }
+.x-login .x-wordmark, .x-login-brand .x-wordmark,
+.x-login p, .x-login-brand p,
+.x-login .x-stack, .x-login-form { position: relative; z-index: 1; }
+.x-ast-float { position: absolute; pointer-events: none; z-index: 0; animation: x-float-y 9s ease-in-out infinite; }
+.x-ast-float > .x-ast { display: block; width: 100%; height: 100%; animation: x-spin-slow 32s linear infinite; }
+.x-ast-f1 { width: 520px; height: 520px; right: -200px; bottom: -180px; color: #fff; opacity: 0.95; animation-duration: 11s; }
+.x-ast-f1 > .x-ast { animation-duration: 36s; }
+.x-ast-f2 { width: 150px; height: 150px; left: 24px; top: 12%; color: rgba(255, 255, 255, 0.35); animation-duration: 8s; }
+.x-ast-f2 > .x-ast { animation-duration: 24s; }
+.x-ast-f3 { width: 96px; height: 96px; left: 42%; bottom: 14%; color: rgba(255, 255, 255, 0.28); animation-duration: 10s; }
+.x-ast-f3 > .x-ast { animation-duration: 28s; animation-direction: reverse; }
+.x-ast-f4 { width: 64px; height: 64px; right: 22%; top: 10%; color: rgba(255, 255, 255, 0.22); animation-duration: 7s; }
+.x-ast-f4 > .x-ast { animation-duration: 20s; }
+.x-login-anim { animation: x-fade-up 500ms ease-out both; }
+.x-login-anim--d1 { animation-delay: 60ms; }
+.x-login-fade { animation: x-fade-up 300ms ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
 .x-panel { border-left: 2px solid var(--muted); padding: 18px; overflow-y: auto; }
 .x-panel h2 { margin-top: 0 !important; }
 .x-panel .x-sec { margin: 14px 0 8px; }
@@ -309,3 +382,16 @@ a.x-card { text-decoration: none; color: inherit; display: block; }
   .x-modal { max-width: 100%; border-radius: 16px 16px 0 0; max-height: 92dvh; padding-bottom: 28px; }
 }
 .x-newbtn { display: flex; align-items: center; justify-content: center; min-height: 44px; margin: 0 10px 14px; border-radius: var(--x-radius); background: #fff; color: var(--primary); font-weight: 700; font-size: 15px; border: 0; width: calc(100% - 20px); }
+
+/* Tombol form login di sisi putih desktop: jangan putih di atas putih */
+.x-login-form .x-btn--white { background: var(--primary); border-color: var(--primary); color: #fff; }
+.x-login-form .x-btn--white:hover { background: #062F80; border-color: #062F80; }
+
+/* Login mobile: panel biru di atas (asterisk hanya di sini), form di lembar putih */
+.x-login-m { min-height: 100dvh; display: flex; flex-direction: column; background: var(--primary); }
+.x-login.x-login-hero { min-height: 0; flex: 0 0 auto; height: 38dvh; min-height: 240px; padding: 28px 24px 44px; }
+.x-login-hero p { margin-bottom: 0; }
+.x-login-hero .x-ast-f1 { width: 300px; height: 300px; right: -120px; bottom: -150px; top: auto; }
+.x-login-hero .x-ast-f2 { width: 110px; height: 110px; left: auto; right: 34%; top: 14px; }
+.x-login-hero .x-ast-f3 { width: 64px; height: 64px; left: auto; right: 18px; top: 26px; bottom: auto; }
+.x-login-form.x-login-sheet { flex: 1; max-width: none; justify-content: flex-start; padding: 28px 24px 40px; background: var(--surface, #fff); border-radius: 20px 20px 0 0; margin-top: -20px; position: relative; z-index: 2; }

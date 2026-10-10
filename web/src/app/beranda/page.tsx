@@ -35,8 +35,12 @@ export default function BerandaPage() {
     [events, hiddenGroups, now]
   );
   const todayList = useMemo(
-    () => upcoming.filter((e) => e.startAt && dayKey(new Date(e.startAt)) === today),
-    [upcoming, today]
+    () =>
+      events
+        .filter((e) => !hiddenGroups.includes(e.group))
+        .filter((e) => e.startAt && dayKey(new Date(e.startAt)) === today)
+        .sort((a, b) => (a.startAt ?? "").localeCompare(b.startAt ?? "")),
+    [events, hiddenGroups, today]
   );
   const nextList = useMemo(
     () => upcoming.filter((e) => e.startAt && dayKey(new Date(e.startAt)) !== today).slice(0, 5),
@@ -100,8 +104,8 @@ export default function BerandaPage() {
         <EmptyState text="Belum ada agenda hari ini. Tekan + untuk menambah." />
       ) : (
         <div className="x-stack">
-          {todayList.map((e) => (
-            <EventRow key={e.id} event={e} />
+          {todayList.map((e, i) => (
+            <EventRow key={e.id} event={e} index={i} />
           ))}
         </div>
       )}
@@ -112,8 +116,8 @@ export default function BerandaPage() {
         <EmptyState text="Tidak ada tugas terbuka. Tambah lewat + Baru." />
       ) : (
         <div className="x-stack">
-          {openTasks.map((t) => (
-            <label key={t.id} className="x-check" style={{ border: "var(--x-border)", borderRadius: "var(--x-radius)", padding: "10px 12px" }}>
+          {openTasks.map((t, i) => (
+            <label key={t.id} className="x-check x-rise" style={{ border: "var(--x-border)", borderRadius: "var(--x-radius)", padding: "10px 12px", ["--i" as string]: i } as React.CSSProperties}>
               <input type="checkbox" checked={t.done} onChange={() => toggleTask(t.id)} />
               <span>
                 <b>{t.title}</b>
@@ -135,8 +139,8 @@ export default function BerandaPage() {
         <EmptyState text="Tidak ada agenda berikutnya." />
       ) : (
         <div className="x-stack">
-          {nextList.map((e) => (
-            <EventRow key={e.id} event={e} />
+          {nextList.map((e, i) => (
+            <EventRow key={e.id} event={e} index={i} showDate />
           ))}
         </div>
       )}
