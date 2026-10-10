@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useState } from "react";
 import { DatePicker } from "@/components/date-picker";
 
 const MON_SHORT = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
@@ -106,115 +105,27 @@ export function normalizeHM(raw: string): string | null {
   return null;
 }
 
-const SLOTS_30 = Array.from({ length: 48 }, (_, i) => `${pad(Math.floor(i / 2))}:${i % 2 === 0 ? "00" : "30"}`);
-
 function TimeField({
   id,
   label,
   value,
   onChange,
-  from,
   disabled,
 }: {
   id: string;
   label: string;
   value: string;
   onChange: (v: string) => void;
-  from?: string;
   disabled?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value);
   const [err, setErr] = useState("");
-  const listRef = useRef<HTMLDivElement>(null);
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const [mounted, setMounted] = useState(false);
-  const [pos, setPos] = useState<{ left: number; top: number; width: number } | null>(null);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setMounted(true);
-  }, []);
-
-  const updatePos = useCallback(() => {
-    const el = wrapRef.current;
-    if (!el || typeof window === "undefined") return;
-    const r = el.getBoundingClientRect();
-    const measuredH = listRef.current?.getBoundingClientRect().height;
-    const popH = measuredH && measuredH > 0 ? measuredH : 208;
-    const below = window.innerHeight - r.bottom;
-    const above = r.top;
-    const isUp = below < popH + 4 && above > below;
-    let top = isUp ? r.top - popH - 4 : r.bottom + 4;
-    if (popH >= window.innerHeight - 16) {
-      top = 8;
-    } else {
-      top = Math.max(8, Math.min(top, window.innerHeight - popH - 8));
-    }
-    const width = Math.max(160, r.width);
-    const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8));
-    setPos({ left, top, width });
-  }, []);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setDraft(value);
     setErr("");
   }, [value]);
-
-  useEffect(() => {
-    if (!open) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setPos(null);
-      return;
-    }
-    updatePos();
-    const raf = window.requestAnimationFrame(() => updatePos());
-    const onDoc = (e: MouseEvent) => {
-      const t = e.target as Node;
-      if (wrapRef.current?.contains(t)) return;
-      if (listRef.current?.contains(t)) return;
-      setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    const onScroll = () => updatePos();
-    const onResize = () => updatePos();
-    document.addEventListener("mousedown", onDoc);
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("scroll", onScroll, true);
-    window.addEventListener("resize", onResize);
-    const t = window.setTimeout(() => {
-      const el = listRef.current?.querySelector("[data-cur='1']");
-      el?.scrollIntoView({ block: "center" });
-    }, 30);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("scroll", onScroll, true);
-      window.removeEventListener("resize", onResize);
-      window.cancelAnimationFrame(raf);
-      window.clearTimeout(t);
-    };
-  }, [open, updatePos]);
-
-  const suggestions = useMemo(() => {
-    const fromN = from ? (normalizeHM(from) ?? (/^\d{2}:\d{2}$/.test(from) ? from : null)) : null;
-    const fromM = fromN ? toMin(fromN) : null;
-    if (fromM !== null && fromM !== undefined) {
-      const out: { value: string; label: string }[] = [];
-      for (const s of SLOTS_30) {
-        const m = toMin(s);
-        if (m === null || m <= (fromM as number)) continue;
-        const d = m - (fromM as number);
-        const dur = fmtDur(d);
-        out.push({ value: s, label: dur ? `${s} (${dur})` : s });
-      }
-      return out;
-    }
-    return SLOTS_30.map((s) => ({ value: s, label: s }));
-  }, [from]);
 
   const commit = (raw: string) => {
     if (disabled) return;
@@ -235,103 +146,50 @@ function TimeField({
     }
   };
 
-  const dropNode = (
-    <div
-      className="x-when-drop"
-      role="listbox"
-      aria-label={`Pilih ${label}`}
-      ref={listRef}
-      style={{
-        position: "fixed",
-        left: pos?.left ?? 8,
-        top: pos?.top ?? 8,
-        width: pos?.width ?? 200,
-        zIndex: 100,
-      }}
-    >
-      {suggestions.map((s) => (
-        <button
-          key={s.value}
-          type="button"
-          role="option"
-          aria-selected={s.value === value}
-          data-cur={s.value === value ? "1" : "0"}
-          className={s.value === value ? "is-on" : ""}
-          onMouseDown={(e) => {
-            e.preventDefault();
-            setErr("");
-            onChange(s.value);
-            setDraft(s.value);
-            setOpen(false);
-          }}
-        >
-          {s.label}
-        </button>
-      ))}
-    </div>
-  );
-
   return (
-    <div>
-      <div className="x-when-timewrap" ref={wrapRef}>
-        <input
-          id={id}
-          className="x-input x-when-time"
-          inputMode="numeric"
-          placeholder="HH:MM"
-          autoComplete="off"
-          value={draft}
-          disabled={disabled}
-          maxLength={5}
-          aria-label={label}
-          aria-invalid={err ? true : undefined}
-          aria-describedby={err ? `${id}-err` : undefined}
-          aria-autocomplete="list"
-          onChange={(e) => {
-            if (disabled) return;
-            let v = e.target.value.replace(/[^\d:]/g, "").slice(0, 5);
-            const firstColon = v.indexOf(":");
-            if (firstColon !== -1) {
-              v = v.slice(0, firstColon + 1) + v.slice(firstColon + 1).replace(/:/g, "");
-            }
-            if (/^\d{2}$/.test(v) && !draft.includes(":") && v.length > draft.length) {
-              const h = parseInt(v, 10);
-              if (h <= 23) v = `${v}:`;
-            }
-            setDraft(v);
-            if (err) setErr("");
-            setOpen(true);
-          }}
-          onBlur={() => {
-            commit(draft);
-            setOpen(false);
-          }}
-          onFocus={() => {
-            if (!disabled) setOpen(true);
-          }}
-          onKeyDown={(e) => {
-            if (disabled) return;
-            if (e.key === "ArrowUp" || e.key === "ArrowDown") {
-              e.preventDefault();
-              const base = normalizeHM(draft) ?? (/^\d{2}:\d{2}$/.test(value) ? value : null) ?? normalizeHM(value) ?? "09:00";
-              const next = addMin(base, e.key === "ArrowUp" ? 15 : -15);
-              setErr("");
-              onChange(next);
-              setDraft(next);
-              setOpen(false);
-            } else if (e.key === "Enter") {
-              e.preventDefault();
-              commit((e.target as HTMLInputElement).value);
-              setOpen(false);
-            } else if (e.key === "Escape") {
-              setDraft(value);
-              setErr("");
-              setOpen(false);
-            }
-          }}
-        />
-        {open && !disabled && mounted && typeof document !== "undefined" ? createPortal(dropNode, document.body) : null}
-      </div>
+    <div style={{ minWidth: 0 }}>
+      <input
+        id={id}
+        className="x-input x-when-time"
+        style={{ width: "100%", boxSizing: "border-box" }}
+        inputMode="numeric"
+        placeholder="HH:MM"
+        autoComplete="off"
+        value={draft}
+        disabled={disabled}
+        maxLength={5}
+        aria-label={label}
+        aria-invalid={err ? true : undefined}
+        aria-describedby={err ? `${id}-err` : undefined}
+        onChange={(e) => {
+          if (disabled) return;
+          let v = e.target.value.replace(/[^\d:.]/g, "").replace(/\./g, ":").slice(0, 5);
+          const firstColon = v.indexOf(":");
+          if (firstColon !== -1) {
+            v = v.slice(0, firstColon + 1) + v.slice(firstColon + 1).replace(/:/g, "");
+          }
+          setDraft(v);
+          if (err) setErr("");
+        }}
+        onBlur={() => commit(draft)}
+        onKeyDown={(e) => {
+          if (disabled) return;
+          if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+            e.preventDefault();
+            const base = normalizeHM(draft) ?? normalizeHM(value) ?? "09:00";
+            const next = addMin(base, e.key === "ArrowUp" ? 15 : -15);
+            setErr("");
+            onChange(next);
+            setDraft(next);
+          } else if (e.key === "Enter") {
+            e.preventDefault();
+            commit((e.target as HTMLInputElement).value);
+          } else if (e.key === "Escape") {
+            setDraft(value);
+            setErr("");
+          }
+        }}
+      />
       {err && (
         <p id={`${id}-err`} className="x-when-err" role="alert">
           {err}
@@ -423,12 +281,15 @@ export function EventWhenPicker({
       <span id={`${idPrefix}-waktu-label`} style={{ fontSize: 12, fontWeight: 500, color: "var(--ink-2)" }}>
         Waktu
       </span>
-      <div className="x-when-event" aria-labelledby={`${idPrefix}-waktu-label`}>
-        <div className="x-when-event-date">
+      <div className="x-when-event" aria-labelledby={`${idPrefix}-waktu-label`} style={{ display: "grid", gap: 8 }}>
+        <div className="x-when-event-date" style={{ minWidth: 0 }}>
           <DateField date={date} onDateChange={onDateChange} />
         </div>
-        <TimeField id={`${idPrefix}-mulai`} label="Jam mulai" value={start} onChange={handleStart} />
-        <TimeField id={`${idPrefix}-selesai`} label="Jam selesai" value={end} onChange={onEndChange} from={start} />
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", alignItems: "center", gap: 8 }}>
+          <TimeField id={`${idPrefix}-mulai`} label="Jam mulai" value={start} onChange={handleStart} />
+          <span aria-hidden="true" style={{ color: "var(--ink-2)" }}>–</span>
+          <TimeField id={`${idPrefix}-selesai`} label="Jam selesai" value={end} onChange={onEndChange} />
+        </div>
       </div>
       <p className="x-when-summary" role="status">
         {summary}
@@ -478,13 +339,13 @@ export function TaskWhenPicker({
       </div>
       <div
         className="x-when-taskrow"
-        style={{ opacity: noDeadline ? 0.45 : 1, pointerEvents: noDeadline ? "none" : "auto" }}
+                style={{ display: "flex", gap: 8, opacity: noDeadline ? 0.45 : 1, pointerEvents: noDeadline ? "none" : "auto" }}
         aria-disabled={noDeadline}
       >
-        <div className="x-when-taskrow-date">
+        <div className="x-when-taskrow-date" style={{ flex: "1 1 60%", minWidth: 0 }}>
           <DateField date={date} onDateChange={onDateChange} disabled={noDeadline} />
         </div>
-        <div className="x-when-taskrow-time">
+        <div className="x-when-taskrow-time" style={{ flex: "1 1 40%", minWidth: 0 }}>
           <TimeField id={`${idPrefix}-jam`} label="Jam tenggat" value={time} onChange={onTimeChange} disabled={noDeadline} />
         </div>
       </div>

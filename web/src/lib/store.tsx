@@ -18,7 +18,9 @@ import type {
   NewEventInput,
   NewPrefill,
   TaskItem,
+  TaskSubtask,
 } from "@/lib/data";
+import { deriveTaskDone } from "@/lib/data";
 
 interface Store {
   ready: boolean;
@@ -47,10 +49,13 @@ interface Store {
   updateEvent: (id: string, patch: { title: string; note: string; location: string; priority: EventItem["priority"]; startAt: string; endAt: string }) => Promise<boolean>;
   deleteEvent: (id: string) => Promise<boolean>;
   duplicateEvent: (id: string) => Promise<void>;
-  addTask: (t: { title: string; groupId: string | null; dueAt: string | null; priority: TaskItem["priority"]; note: string }) => Promise<boolean>;
+  addTask: (t: { title: string; groupId: string | null; dueAt: string | null; priority: TaskItem["priority"]; note: string; subtasks?: string[] }) => Promise<boolean>;
   toggleTask: (id: string) => void;
   updateTask: (id: string, patch: { title?: string; note?: string; priority?: TaskItem["priority"]; dueAt?: string | null; groupId?: string | null }) => Promise<boolean>;
   deleteTask: (id: string) => Promise<boolean>;
+  addTaskSubtask: (taskId: string, title: string) => Promise<boolean>;
+  toggleTaskSubtask: (taskId: string, subId: string) => void;
+  deleteTaskSubtask: (taskId: string, subId: string) => Promise<boolean>;
   markNotifsRead: () => Promise<void>;
   signOut: () => Promise<void>;
   resetDemo: () => void;
@@ -154,6 +159,11 @@ function rowToTask(row: any): TaskItem {
     priority: [1, 2, 3, 4].includes(row.priority) ? row.priority : 3,
     done: !!row.done,
     note: String(row.description ?? ""),
+    subtasks: Array.isArray(row.task_subtasks)
+      ? [...(row.task_subtasks as { id: string; title: string; done: boolean; position?: number; created_at?: string }[])]
+          .sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")))
+          .map((x) => ({ id: String(x.id), title: String(x.title ?? ""), done: !!x.done }))
+      : [],
   };
 }
 
@@ -279,12 +289,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setEvents(mapped);
       setApprovals(rows.map((r) => rowToApproval(r, u.id)));
 
-      const { data: tdata } = await supabase
-        .from("tasks")
-        .select("id,title,description,due_at,done,priority,group_id,groups(name,color)")
-        .eq("owner_user_id", u.id)
-        .order("due_at", { ascending: true, nullsFirst: false })
-        .limit(200);
+      const taskQuery = (cols: string) =>
+        supabase
+          .from("tasks")
+          .select(cols)
+          .eq("owner_user_id", u.id)
+          .order("due_at", { ascending: true, nullsFirst: false })
+          .limit(200);
+      const baseCols = "id,title,description,due_at,done,priority,group_id,groups(name,color)";
+      // eslint-disable-next-line prefer-const
+      let { data: tdata, error: terr } = await taskQuery(`${baseCols},task_subtasks(id,title,done,position,created_at)`);
+      if (terr) {
+        // Migration 6 (task_subtasks) belum dijalankan: muat tugas tanpa subtugas.
+        ({ data: tdata, error: terr } = await taskQuery(baseCols));
+      }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setTasks(((tdata ?? []) as any[]).map(rowToTask));
 
@@ -566,13 +584,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   );
 
   const addTask = useCallback(
-    async (t: { title: string; groupId: string | null; dueAt: string | null; priority: TaskItem["priority"]; note: string }): Promise<boolean> => {
+    async (t: { title: string; groupId: string | null; dueAt: string | null; priority: TaskItem["priority"]; note: string; subtasks?: string[] }): Promise<boolean> => {
       if (!user) {
         setLoadError("Masuk dulu untuk menambah tugas.");
         return false;
       }
       setLoadError(null);
-      const { error } = await supabase.from("tasks").insert({
+      const { data, error } = await supabase.from("tasks").insert({
         owner_user_id: user.id,
         created_by: user.id,
         group_id: t.groupId,
@@ -581,10 +599,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         due_at: t.dueAt,
         priority: t.priority,
         done: false,
-      });
+      }).select("id").single();
       if (error) {
         setLoadError(`Gagal menyimpan tugas: ${error.message}`);
         return false;
+      }
+      const subs = (t.subtasks ?? []).map((x) => x.trim()).filter(Boolean);
+      if (subs.length > 0 && data?.id) {
+        const { error: serr } = await supabase
+          .from("task_subtasks")
+          .insert(subs.map((title, position) => ({ task_id: data.id, title, done: false, position })));
+        if (serr) setLoadError(`Tugas tersimpan, tapi subtugas gagal: ${serr.message}. Pastikan migration 6 sudah dijalankan.`);
       }
       await load();
       return true;
@@ -596,6 +621,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     (id: string) => {
       const target = tasks.find((t) => t.id === id);
       if (!target) return;
+      // Tugas dengan subtugas selesai otomatis dari subtugasnya.
+      if (target.subtasks.length > 0) return;
       setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
       supabase
         .from("tasks")
@@ -629,6 +656,67 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       return true;
     },
     [load, supabase]
+  );
+
+  const patchTaskSubs = useCallback((taskId: string, fn: (subs: TaskSubtask[]) => TaskSubtask[]) => {
+    setTasks((prev) =>
+      prev.map((t) => {
+        if (t.id !== taskId) return t;
+        const subs = fn(t.subtasks);
+        return { ...t, subtasks: subs, done: deriveTaskDone(t.done, subs) };
+      })
+    );
+  }, []);
+
+  const addTaskSubtask = useCallback(
+    async (taskId: string, title: string): Promise<boolean> => {
+      const clean = title.trim();
+      const target = tasks.find((t) => t.id === taskId);
+      if (!clean || !target) return false;
+      const position = target.subtasks.length;
+      const { data, error } = await supabase
+        .from("task_subtasks")
+        .insert({ task_id: taskId, title: clean, done: false, position })
+        .select("id")
+        .single();
+      if (error) {
+        setLoadError(`Gagal menambah subtugas: ${error.message}. Pastikan migration 6 sudah dijalankan.`);
+        return false;
+      }
+      patchTaskSubs(taskId, (subs) => [...subs, { id: String(data.id), title: clean, done: false }]);
+      return true;
+    },
+    [patchTaskSubs, supabase, tasks]
+  );
+
+  const toggleTaskSubtask = useCallback(
+    (taskId: string, subId: string) => {
+      const target = tasks.find((t) => t.id === taskId);
+      const sub = target?.subtasks.find((x) => x.id === subId);
+      if (!sub) return;
+      patchTaskSubs(taskId, (subs) => subs.map((x) => (x.id === subId ? { ...x, done: !x.done } : x)));
+      supabase
+        .from("task_subtasks")
+        .update({ done: !sub.done })
+        .eq("id", subId)
+        .then(({ error }) => {
+          if (error) setLoadError(`Subtugas tidak tersimpan: ${error.message}`);
+        });
+    },
+    [patchTaskSubs, supabase, tasks]
+  );
+
+  const deleteTaskSubtask = useCallback(
+    async (taskId: string, subId: string): Promise<boolean> => {
+      const { error } = await supabase.from("task_subtasks").delete().eq("id", subId);
+      if (error) {
+        setLoadError(`Gagal menghapus subtugas: ${error.message}`);
+        return false;
+      }
+      patchTaskSubs(taskId, (subs) => subs.filter((x) => x.id !== subId));
+      return true;
+    },
+    [patchTaskSubs, supabase]
   );
 
   const deleteTask = useCallback(
@@ -665,8 +753,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [load]);
 
   const value = useMemo(
-    () => ({ ready, authReady, user, userName, loadError, events, tasks, myGroups, approvals, unreadCount, newOpen, newPrefill, openNew, closeNew, reload: load, setRsvp, markAttendance, toggleCheck, addChecklist, decide, removeApproval, addEvent, checkConflict, updateEvent, deleteEvent, duplicateEvent, addTask, toggleTask, updateTask, deleteTask, markNotifsRead, signOut, resetDemo }),
-    [ready, authReady, user, userName, loadError, events, tasks, myGroups, approvals, unreadCount, newOpen, newPrefill, openNew, closeNew, load, setRsvp, markAttendance, toggleCheck, addChecklist, decide, removeApproval, addEvent, checkConflict, updateEvent, deleteEvent, duplicateEvent, addTask, toggleTask, updateTask, deleteTask, markNotifsRead, signOut, resetDemo]
+    () => ({ ready, authReady, user, userName, loadError, events, tasks, myGroups, approvals, unreadCount, newOpen, newPrefill, openNew, closeNew, reload: load, setRsvp, markAttendance, toggleCheck, addChecklist, decide, removeApproval, addEvent, checkConflict, updateEvent, deleteEvent, duplicateEvent, addTask, toggleTask, updateTask, deleteTask, addTaskSubtask, toggleTaskSubtask, deleteTaskSubtask, markNotifsRead, signOut, resetDemo }),
+    [ready, authReady, user, userName, loadError, events, tasks, myGroups, approvals, unreadCount, newOpen, newPrefill, openNew, closeNew, load, setRsvp, markAttendance, toggleCheck, addChecklist, decide, removeApproval, addEvent, checkConflict, updateEvent, deleteEvent, duplicateEvent, addTask, toggleTask, updateTask, deleteTask, addTaskSubtask, toggleTaskSubtask, deleteTaskSubtask, markNotifsRead, signOut, resetDemo]
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

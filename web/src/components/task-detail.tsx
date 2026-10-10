@@ -38,7 +38,7 @@ export function TaskDetailBody({
   onDeleted?: () => void;
   idPrefix?: string;
 }) {
-  const { tasks, toggleTask, updateTask, deleteTask, myGroups } = useStore();
+  const { tasks, toggleTask, updateTask, deleteTask, myGroups, addTaskSubtask, toggleTaskSubtask, deleteTaskSubtask } = useStore();
   const { say } = useToast();
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState("");
@@ -50,6 +50,8 @@ export function TaskDetailBody({
   const [groupId, setGroupId] = useState<string>("pribadi");
   const [saving, setSaving] = useState(false);
   const [nowMs, setNowMs] = useState<number | null>(null);
+  const [newSub, setNewSub] = useState("");
+  const [addingSub, setAddingSub] = useState(false);
   const task = tasks.find((t) => t.id === taskId);
 
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -171,6 +173,8 @@ export function TaskDetailBody({
           type="checkbox"
           className="x-task-bigcheck"
           checked={task.done}
+          disabled={task.subtasks.length > 0}
+          title={task.subtasks.length > 0 ? "Selesai otomatis saat semua subtugas selesai" : undefined}
           onChange={() => {
             toggleTask(task.id);
             say(task.done ? "Tugas dibuka lagi" : "Tugas selesai");
@@ -178,7 +182,13 @@ export function TaskDetailBody({
           aria-label={task.done ? `Buka lagi ${task.title}` : `Selesaikan ${task.title}`}
         />
         <span className="x-task-head-title">{task.title}</span>
-        <span className="x-task-head-state">{task.done ? "Selesai" : "Tandai selesai"}</span>
+        <span className="x-task-head-state">
+          {task.subtasks.length > 0
+            ? `${task.subtasks.filter((x) => x.done).length}/${task.subtasks.length} subtugas`
+            : task.done
+              ? "Selesai"
+              : "Tandai selesai"}
+        </span>
       </label>
       <div className="x-chips" style={{ marginTop: 10 }}>
         <PriorityChip value={task.priority} />
@@ -201,6 +211,67 @@ export function TaskDetailBody({
           Tanpa catatan.
         </p>
       )}
+      <div className="x-subtasks" style={{ marginTop: 14 }}>
+        <p className="x-sec" style={{ margin: "0 0 6px" }}>Subtugas</p>
+        {task.subtasks.length > 0 && (
+          <div className="x-subtask-bar" aria-hidden="true">
+            <i style={{ width: `${Math.round((task.subtasks.filter((x) => x.done).length / task.subtasks.length) * 100)}%` }} />
+          </div>
+        )}
+        {task.subtasks.map((s) => (
+          <div key={s.id} className={`x-subtask-row${s.done ? " is-done" : ""}`}>
+            <input
+              type="checkbox"
+              checked={s.done}
+              onChange={() => toggleTaskSubtask(task.id, s.id)}
+              aria-label={s.done ? `Buka lagi subtugas ${s.title}` : `Selesaikan subtugas ${s.title}`}
+            />
+            <span className="x-subtask-title">{s.title}</span>
+            <button
+              type="button"
+              className="x-subtask-del"
+              aria-label={`Hapus subtugas ${s.title}`}
+              onClick={async () => {
+                if (await deleteTaskSubtask(task.id, s.id)) say("Subtugas dihapus");
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        <form
+          className="x-subtask-add"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            const v = newSub.trim();
+            if (!v || addingSub) return;
+            setAddingSub(true);
+            const wasDone = task.done;
+            const ok = await addTaskSubtask(task.id, v);
+            setAddingSub(false);
+            if (ok) {
+              setNewSub("");
+              if (wasDone) say("Subtugas baru ditambahkan, tugas dibuka lagi");
+            }
+          }}
+        >
+          <input
+            className="x-input"
+            placeholder="Tambah subtugas, lalu Enter"
+            value={newSub}
+            onChange={(e) => setNewSub(e.target.value)}
+            aria-label="Subtugas baru"
+          />
+          <button type="submit" className="x-btn x-btn--outline x-btn--sm" style={{ width: "auto" }} disabled={!newSub.trim() || addingSub}>
+            Tambah
+          </button>
+        </form>
+        {task.subtasks.length > 0 && (
+          <p className="x-sub" style={{ marginTop: 6, fontSize: 12 }}>
+            Tugas otomatis selesai saat semua subtugas selesai.
+          </p>
+        )}
+      </div>
       <div className="x-btns" style={{ marginTop: 16 }}>
         <button type="button" className="x-btn x-btn--outline x-btn--sm" onClick={() => setEditing(true)}>
           Edit
