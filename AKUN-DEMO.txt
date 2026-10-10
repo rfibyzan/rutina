@@ -1,0 +1,28 @@
+RUTINA - Akun Demo untuk Hark
+================================
+
+Aplikasi web: jalankan dari folder web/
+  cd web
+  npm install
+  npm run dev
+  buka http://localhost:3000
+
+Aplikasi butuh file web/.env.local berisi:
+  NEXT_PUBLIC_SUPABASE_URL=https://dtojpyohzpszgkiejwme.supabase.co
+  NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR0b2pweW9oenBzemdraWVqd21lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE1NDg0ODcsImV4cCI6MjEwNzEyNDQ4N30.C7V65TaqFrDcsg4biGxcHqVN8bpkY9VHfVn6-WjeyHk
+
+Masuk dengan akun demo (sudah terisi data contoh Oktober 2026):
+  Email    : demoaja@rutina.web
+  Password : RutinaDemo123
+
+Atau daftar akun baru lewat tombol "Daftar", dan bisa juga
+masuk dengan Google bila sudah diaktifkan di dashboard Supabase.
+
+Alur yang bisa dicoba:
+  1. Masuk, lihat Beranda (Hari ini, Tugas, Akan datang).
+  2. Tekan + Baru (atau tombol N) untuk tambah Event/Tugas.
+  3. Klik slot kosong di kalender mingguan untuk isi otomatis.
+  4. Buka Persetujuan: Bazar Dana Usaha menunggu keputusan.
+  5. Buat Grup baru / gabung via kode di halaman Grup.
+  6. Ubah role anggota + aturan kuorum di detail grup.
+  7. Tandai Selesai / Tidak Hadir di detail event.

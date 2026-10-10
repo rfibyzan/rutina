@@ -1,0 +1,5 @@
+web/node_modules/
+web/.next/
+android/app/build/
+*.apk
+rutina-hark.zip
