@@ -64,7 +64,6 @@ export function EventEditForm({
         <input id={`${idPrefix}-judul`} className="x-input" value={title} onChange={(e) => setTitle(e.target.value)} />
       </div>
       <div className="x-field">
-        <span>Waktu</span>
         <EventWhenPicker
           idPrefix={idPrefix}
           date={date}

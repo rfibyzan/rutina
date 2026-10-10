@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { DatePicker } from "@/components/date-picker";
 
 const MON_SHORT = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
 const DOW_SHORT = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
-// Senin=0..Minggu=6 untuk label Indonesia
-const DOW_MON0 = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
 
 function pad(n: number): string {
   return String(n).padStart(2, "0");
@@ -26,6 +25,20 @@ function parseYMD(s: string): Date | null {
 function fmtShort(d: Date): string {
   const dow = DOW_SHORT[d.getDay()];
   return `${dow} ${d.getDate()} ${MON_SHORT[d.getMonth()]}`;
+}
+
+function fmtLong(d: Date): string {
+  const dow = DOW_SHORT[d.getDay()];
+  return `${dow}, ${d.getDate()} ${MON_SHORT[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+function toMin(hm: string): number | null {
+  const m = /^(\d{2}):(\d{2})$/.exec(hm);
+  if (!m) return null;
+  const h = parseInt(m[1], 10);
+  const mi = parseInt(m[2], 10);
+  if (h > 23 || mi > 59) return null;
+  return h * 60 + mi;
 }
 
 function addMin(hm: string, mins: number): string {
@@ -54,20 +67,43 @@ function fmtDur(mins: number): string {
   return `${h} jam ${r} mnt`;
 }
 
-function normalizeHM(raw: string): string | null {
-  const digits = raw.replace(/\D/g, "").slice(0, 4);
-  if (digits.length < 3) return null;
-  const hh = parseInt(digits.slice(0, digits.length - 2), 10);
-  const mm = parseInt(digits.slice(-2), 10);
-  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
-  if (hh > 23 || mm > 59) return null;
-  return `${pad(hh)}:${pad(mm)}`;
-}
-
-function autoFormat(raw: string): string {
-  const digits = raw.replace(/\D/g, "").slice(0, 4);
-  if (digits.length <= 2) return digits;
-  return `${digits.slice(0, digits.length - 2)}:${digits.slice(-2)}`;
+export function normalizeHM(raw: string): string | null {
+  if (!raw) return null;
+  let s = raw.trim().replace(/[.,]/g, ":").replace(/\s+/g, "");
+  s = s.replace(/[^\d:]/g, "");
+  if (!s) return null;
+  if (s.includes(":")) {
+    const parts = s.split(":");
+    if (parts.length > 2) return null;
+    const hStr = parts[0] ?? "";
+    const mStr = parts[1] ?? "";
+    if (hStr.length === 0 || hStr.length > 2) return null;
+    if (mStr.length > 2) return null;
+    const h = parseInt(hStr, 10);
+    const m = mStr === "" ? 0 : parseInt(mStr, 10);
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+    if (h > 23 || m > 59) return null;
+    return `${pad(h)}:${pad(m)}`;
+  }
+  if (!/^\d+$/.test(s)) return null;
+  if (s.length <= 2) {
+    const h = parseInt(s, 10);
+    if (h > 23) return null;
+    return `${pad(h)}:00`;
+  }
+  if (s.length === 3) {
+    const h = parseInt(s.slice(0, 1), 10);
+    const m = parseInt(s.slice(1), 10);
+    if (h > 23 || m > 59) return null;
+    return `${pad(h)}:${pad(m)}`;
+  }
+  if (s.length === 4) {
+    const h = parseInt(s.slice(0, 2), 10);
+    const m = parseInt(s.slice(2), 10);
+    if (h > 23 || m > 59) return null;
+    return `${pad(h)}:${pad(m)}`;
+  }
+  return null;
 }
 
 const SLOTS_30 = Array.from({ length: 48 }, (_, i) => `${pad(Math.floor(i / 2))}:${i % 2 === 0 ? "00" : "30"}`);
@@ -77,35 +113,78 @@ function TimeField({
   label,
   value,
   onChange,
-  quicks,
+  from,
+  disabled,
 }: {
   id: string;
   label: string;
   value: string;
   onChange: (v: string) => void;
-  quicks: { label: string; value: string }[];
+  from?: string;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value);
+  const [err, setErr] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(false);
+  const [pos, setPos] = useState<{ left: number; top: number; width: number } | null>(null);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
+  }, []);
+
+  const updatePos = useCallback(() => {
+    const el = wrapRef.current;
+    if (!el || typeof window === "undefined") return;
+    const r = el.getBoundingClientRect();
+    const measuredH = listRef.current?.getBoundingClientRect().height;
+    const popH = measuredH && measuredH > 0 ? measuredH : 208;
+    const below = window.innerHeight - r.bottom;
+    const above = r.top;
+    const isUp = below < popH + 4 && above > below;
+    let top = isUp ? r.top - popH - 4 : r.bottom + 4;
+    if (popH >= window.innerHeight - 16) {
+      top = 8;
+    } else {
+      top = Math.max(8, Math.min(top, window.innerHeight - popH - 8));
+    }
+    const width = Math.max(160, r.width);
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8));
+    setPos({ left, top, width });
+  }, []);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setDraft(value);
+    setErr("");
   }, [value]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPos(null);
+      return;
+    }
+    updatePos();
+    const raf = window.requestAnimationFrame(() => updatePos());
     const onDoc = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (wrapRef.current?.contains(t)) return;
+      if (listRef.current?.contains(t)) return;
+      setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
+    const onScroll = () => updatePos();
+    const onResize = () => updatePos();
     document.addEventListener("mousedown", onDoc);
     window.addEventListener("keydown", onKey);
-    // Scroll ke jam terdekat
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onResize);
     const t = window.setTimeout(() => {
       const el = listRef.current?.querySelector("[data-cur='1']");
       el?.scrollIntoView({ block: "center" });
@@ -113,21 +192,87 @@ function TimeField({
     return () => {
       document.removeEventListener("mousedown", onDoc);
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onResize);
+      window.cancelAnimationFrame(raf);
       window.clearTimeout(t);
     };
-  }, [open]);
+  }, [open, updatePos]);
+
+  const suggestions = useMemo(() => {
+    const fromN = from ? (normalizeHM(from) ?? (/^\d{2}:\d{2}$/.test(from) ? from : null)) : null;
+    const fromM = fromN ? toMin(fromN) : null;
+    if (fromM !== null && fromM !== undefined) {
+      const out: { value: string; label: string }[] = [];
+      for (const s of SLOTS_30) {
+        const m = toMin(s);
+        if (m === null || m <= (fromM as number)) continue;
+        const d = m - (fromM as number);
+        const dur = fmtDur(d);
+        out.push({ value: s, label: dur ? `${s} (${dur})` : s });
+      }
+      return out;
+    }
+    return SLOTS_30.map((s) => ({ value: s, label: s }));
+  }, [from]);
 
   const commit = (raw: string) => {
+    if (disabled) return;
+    if (raw.trim() === "") {
+      setErr("");
+      if (value !== "") onChange("");
+      setDraft("");
+      return;
+    }
     const n = normalizeHM(raw);
-    if (n) onChange(n);
-    else setDraft(value);
+    if (n) {
+      setErr("");
+      if (n !== value) onChange(n);
+      setDraft(n);
+    } else {
+      setErr("Format jam tidak valid (HH:MM, 00:00–23:59).");
+      setDraft(value);
+    }
   };
+
+  const dropNode = (
+    <div
+      className="x-when-drop"
+      role="listbox"
+      aria-label={`Pilih ${label}`}
+      ref={listRef}
+      style={{
+        position: "fixed",
+        left: pos?.left ?? 8,
+        top: pos?.top ?? 8,
+        width: pos?.width ?? 200,
+        zIndex: 100,
+      }}
+    >
+      {suggestions.map((s) => (
+        <button
+          key={s.value}
+          type="button"
+          role="option"
+          aria-selected={s.value === value}
+          data-cur={s.value === value ? "1" : "0"}
+          className={s.value === value ? "is-on" : ""}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            setErr("");
+            onChange(s.value);
+            setDraft(s.value);
+            setOpen(false);
+          }}
+        >
+          {s.label}
+        </button>
+      ))}
+    </div>
+  );
 
   return (
     <div>
-      <label htmlFor={id} style={{ fontSize: 12, fontWeight: 500, color: "var(--ink-2)" }}>
-        {label}
-      </label>
       <div className="x-when-timewrap" ref={wrapRef}>
         <input
           id={id}
@@ -136,184 +281,106 @@ function TimeField({
           placeholder="HH:MM"
           autoComplete="off"
           value={draft}
-          onChange={(e) => {
-            const f = autoFormat(e.target.value);
-            setDraft(f);
-            const n = normalizeHM(f);
-            if (n) onChange(n);
-          }}
-          onBlur={() => commit(draft)}
-          onFocus={() => setOpen(true)}
-          aria-autocomplete="list"
+          disabled={disabled}
           maxLength={5}
+          aria-label={label}
+          aria-invalid={err ? true : undefined}
+          aria-describedby={err ? `${id}-err` : undefined}
+          aria-autocomplete="list"
+          onChange={(e) => {
+            if (disabled) return;
+            let v = e.target.value.replace(/[^\d:]/g, "").slice(0, 5);
+            const firstColon = v.indexOf(":");
+            if (firstColon !== -1) {
+              v = v.slice(0, firstColon + 1) + v.slice(firstColon + 1).replace(/:/g, "");
+            }
+            if (/^\d{2}$/.test(v) && !draft.includes(":") && v.length > draft.length) {
+              const h = parseInt(v, 10);
+              if (h <= 23) v = `${v}:`;
+            }
+            setDraft(v);
+            if (err) setErr("");
+            setOpen(true);
+          }}
+          onBlur={() => {
+            commit(draft);
+            setOpen(false);
+          }}
+          onFocus={() => {
+            if (!disabled) setOpen(true);
+          }}
+          onKeyDown={(e) => {
+            if (disabled) return;
+            if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+              e.preventDefault();
+              const base = normalizeHM(draft) ?? (/^\d{2}:\d{2}$/.test(value) ? value : null) ?? normalizeHM(value) ?? "09:00";
+              const next = addMin(base, e.key === "ArrowUp" ? 15 : -15);
+              setErr("");
+              onChange(next);
+              setDraft(next);
+              setOpen(false);
+            } else if (e.key === "Enter") {
+              e.preventDefault();
+              commit((e.target as HTMLInputElement).value);
+              setOpen(false);
+            } else if (e.key === "Escape") {
+              setDraft(value);
+              setErr("");
+              setOpen(false);
+            }
+          }}
         />
-        {open && (
-          <div className="x-when-drop" role="listbox" aria-label={`Pilih ${label}`} ref={listRef}>
-            {SLOTS_30.map((s) => (
-              <button
-                key={s}
-                type="button"
-                role="option"
-                aria-selected={s === value}
-                data-cur={s === value ? "1" : "0"}
-                className={s === value ? "is-on" : ""}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  onChange(s);
-                  setDraft(s);
-                  setOpen(false);
-                }}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        )}
+        {open && !disabled && mounted && typeof document !== "undefined" ? createPortal(dropNode, document.body) : null}
       </div>
-      {quicks.length > 0 && (
-        <div className="x-when-quicks" role="group" aria-label={`Jam cepat ${label}`}>
-          {quicks.map((q) => (
-            <button
-              key={q.label + q.value}
-              type="button"
-              className={`x-chip${q.value === value ? " is-on" : ""}`}
-              aria-pressed={q.value === value}
-              onClick={() => {
-                onChange(q.value);
-                setDraft(q.value);
-              }}
-            >
-              {q.label}
-            </button>
-          ))}
-        </div>
+      {err && (
+        <p id={`${id}-err`} className="x-when-err" role="alert">
+          {err}
+        </p>
       )}
     </div>
   );
 }
 
-function useDateChips() {
-  return useMemo(() => {
-    const today = new Date();
-    const t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const plus = (n: number) => {
-      const d = new Date(t0);
-      d.setDate(d.getDate() + n);
-      return d;
-    };
-    const dToday = plus(0);
-    const dBesok = plus(1);
-    const dLusa = plus(2);
-    // Chip dinamis: Sen–Jum -> "Sabtu ini", Sab–Min -> "Senin depan"
-    const mon0 = (t0.getDay() + 6) % 7; // Senin=0
-    let dFlex: Date;
-    let flexLabel: string;
-    if (mon0 <= 4) {
-      dFlex = plus(5 - mon0); // Sabtu minggu ini
-      flexLabel = "Sabtu ini";
-    } else {
-      const delta = (7 - mon0) % 7 || 7; // Senin depan
-      dFlex = plus(delta === 0 ? 7 : delta);
-      flexLabel = "Senin depan";
-    }
-    void DOW_MON0;
-    return [
-      { label: "Hari ini", date: toYMD(dToday), sub: fmtShort(dToday) },
-      { label: "Besok", date: toYMD(dBesok), sub: fmtShort(dBesok) },
-      { label: "Lusa", date: toYMD(dLusa), sub: fmtShort(dLusa) },
-      { label: flexLabel, date: toYMD(dFlex), sub: fmtShort(dFlex) },
-    ];
-  }, []);
-}
-
-function DateChips({
-  idPrefix,
+function DateField({
   date,
   onDateChange,
+  disabled,
 }: {
-  idPrefix: string;
   date: string;
   onDateChange: (d: string) => void;
+  disabled?: boolean;
 }) {
-  const chips = useDateChips();
   const [calOpen, setCalOpen] = useState(false);
   const cur = parseYMD(date);
   const base = cur ?? new Date();
   return (
     <div>
-      <span id={`${idPrefix}-tgl-label`} style={{ fontSize: 12, fontWeight: 500, color: "var(--ink-2)" }}>
-        Tanggal{cur ? `: ${fmtShort(cur)}` : ""}
-      </span>
-      <div className="x-when-quicks x-when-dates" role="group" aria-labelledby={`${idPrefix}-tgl-label`}>
-        {chips.map((c) => (
-          <button
-            key={c.label}
-            type="button"
-            className={`x-chip${c.date === date ? " is-on" : ""}`}
-            aria-pressed={c.date === date}
-            title={c.sub}
-            onClick={() => onDateChange(c.date)}
-          >
-            {c.label}
-          </button>
-        ))}
-        <button
-          type="button"
-          className={`x-chip${calOpen ? " is-on" : ""}`}
-          aria-expanded={calOpen}
-          onClick={() => setCalOpen((v) => !v)}
-        >
-          Pilih tanggal
-        </button>
-      </div>
-      {calOpen && (
-        <div className="x-when-cal">
-          <DatePicker
-            title={cur ? fmtShort(cur) : "Pilih tanggal"}
-            titleLabel="Tanggal"
-            open
-            onOpenChange={() => setCalOpen(false)}
-            baseYear={base.getFullYear()}
-            baseMonth={base.getMonth()}
-            weekStart={cur ?? new Date()}
-            agendaKeys={new Set<string>()}
-            onPick={(d) => {
-              onDateChange(toYMD(d));
-              setCalOpen(false);
-            }}
-            onToday={() => {
-              const t = new Date();
-              onDateChange(toYMD(t));
-              setCalOpen(false);
-            }}
-          />
-        </div>
-      )}
+      <DatePicker
+        title={cur ? fmtLong(cur) : "Pilih tanggal"}
+        titleLabel="Tanggal"
+        open={calOpen}
+        onOpenChange={(v) => {
+          if (!disabled) setCalOpen(v);
+        }}
+        baseYear={base.getFullYear()}
+        baseMonth={base.getMonth()}
+        weekStart={cur ?? new Date()}
+        agendaKeys={new Set<string>()}
+        variant="field"
+        disabled={disabled}
+        onPick={(d) => {
+          onDateChange(toYMD(d));
+          setCalOpen(false);
+        }}
+        onToday={() => {
+          const t = new Date();
+          onDateChange(toYMD(t));
+          setCalOpen(false);
+        }}
+      />
     </div>
   );
 }
-
-const EVENT_QUICKS = [
-  { label: "08:00", value: "08:00" },
-  { label: "12:00", value: "12:00" },
-  { label: "15:00", value: "15:00" },
-  { label: "19:00", value: "19:00" },
-];
-
-const TASK_QUICKS = [
-  { label: "08:00", value: "08:00" },
-  { label: "12:00", value: "12:00" },
-  { label: "15:00", value: "15:00" },
-  { label: "19:00", value: "19:00" },
-  { label: "Akhir hari", value: "23:59" },
-];
-
-const DURATIONS = [
-  { label: "30 mnt", mins: 30 },
-  { label: "1 jam", mins: 60 },
-  { label: "1,5 jam", mins: 90 },
-  { label: "2 jam", mins: 120 },
-];
 
 export function EventWhenPicker({
   idPrefix,
@@ -338,41 +405,30 @@ export function EventWhenPicker({
     cur && start && end && start < end
       ? `${fmtShort(cur)} · ${start}–${end}${dur !== null && dur > 0 ? ` (${fmtDur(dur)})` : ""}`
       : "Isi tanggal dan jam.";
+
+  const handleStart = (v: string) => {
+    const d = diffMin(start, end);
+    onStartChange(v);
+    if (v) {
+      if (d !== null && d > 0) {
+        onEndChange(addMin(v, d));
+      } else if (!end || end <= v) {
+        onEndChange(addMin(v, 60));
+      }
+    }
+  };
+
   return (
     <div className="x-when">
-      <DateChips idPrefix={idPrefix} date={date} onDateChange={onDateChange} />
-      <div className="x-when-times">
-        <TimeField id={`${idPrefix}-mulai`} label="Mulai" value={start} onChange={onStartChange} quicks={[]} />
-        <TimeField id={`${idPrefix}-selesai`} label="Selesai" value={end} onChange={onEndChange} quicks={[]} />
-      </div>
-      <div className="x-when-quicks x-when-combo" role="group" aria-label="Jam cepat dan durasi">
-        {EVENT_QUICKS.map((q) => (
-          <button
-            key={q.label + q.value}
-            type="button"
-            className={`x-chip${q.value === start ? " is-on" : ""}`}
-            aria-pressed={q.value === start}
-            onClick={() => onStartChange(q.value)}
-          >
-            {q.label}
-          </button>
-        ))}
-        {DURATIONS.map((d) => {
-          const active = dur === d.mins;
-          return (
-            <button
-              key={d.label}
-              type="button"
-              className={`x-chip${active ? " is-on" : ""}`}
-              aria-pressed={active}
-              onClick={() => {
-                if (start) onEndChange(addMin(start, d.mins));
-              }}
-            >
-              {d.label}
-            </button>
-          );
-        })}
+      <span id={`${idPrefix}-waktu-label`} style={{ fontSize: 12, fontWeight: 500, color: "var(--ink-2)" }}>
+        Waktu
+      </span>
+      <div className="x-when-event" aria-labelledby={`${idPrefix}-waktu-label`}>
+        <div className="x-when-event-date">
+          <DateField date={date} onDateChange={onDateChange} />
+        </div>
+        <TimeField id={`${idPrefix}-mulai`} label="Jam mulai" value={start} onChange={handleStart} />
+        <TimeField id={`${idPrefix}-selesai`} label="Jam selesai" value={end} onChange={onEndChange} from={start} />
       </div>
       <p className="x-when-summary" role="status">
         {summary}
@@ -406,18 +462,30 @@ export function TaskWhenPicker({
       : "Isi tanggal dan jam tenggat.";
   return (
     <div className="x-when">
-      <label className="x-fcheck" style={{ marginBottom: 4 }}>
-        <input
-          type="checkbox"
-          checked={noDeadline}
-          onChange={(e) => onNoDeadlineChange(e.target.checked)}
-        />
-        <span>Tanpa tenggat</span>
-      </label>
-      <div style={{ opacity: noDeadline ? 0.45 : 1, pointerEvents: noDeadline ? "none" : "auto" }} aria-disabled={noDeadline}>
-        <DateChips idPrefix={idPrefix} date={date} onDateChange={onDateChange} />
-        <div style={{ marginTop: 8 }}>
-          <TimeField id={`${idPrefix}-jam`} label="Jam tenggat" value={time} onChange={onTimeChange} quicks={TASK_QUICKS} />
+      <div className="x-when-tenggat">
+        <span id={`${idPrefix}-tenggat-label`} style={{ fontSize: 12, fontWeight: 500, color: "var(--ink-2)" }}>
+          Tenggat
+        </span>
+        <label className="x-when-nodeadline">
+          <input
+            type="checkbox"
+            checked={noDeadline}
+            onChange={(e) => onNoDeadlineChange(e.target.checked)}
+            aria-labelledby={`${idPrefix}-tenggat-label`}
+          />
+          <span>Tanpa tenggat</span>
+        </label>
+      </div>
+      <div
+        className="x-when-taskrow"
+        style={{ opacity: noDeadline ? 0.45 : 1, pointerEvents: noDeadline ? "none" : "auto" }}
+        aria-disabled={noDeadline}
+      >
+        <div className="x-when-taskrow-date">
+          <DateField date={date} onDateChange={onDateChange} disabled={noDeadline} />
+        </div>
+        <div className="x-when-taskrow-time">
+          <TimeField id={`${idPrefix}-jam`} label="Jam tenggat" value={time} onChange={onTimeChange} disabled={noDeadline} />
         </div>
       </div>
       <p className="x-when-summary" role="status">

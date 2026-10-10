@@ -123,7 +123,6 @@ export function TaskDetailBody({
           <input id={`${idPrefix}-judul`} className="x-input" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
         </div>
         <div className="x-field">
-          <span>Tenggat</span>
           <TaskWhenPicker
             idPrefix={idPrefix}
             date={date}
