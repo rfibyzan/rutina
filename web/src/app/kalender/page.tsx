@@ -13,6 +13,8 @@ import {
 import { EventEditForm } from "@/components/event-edit-form";
 import { TaskDetail } from "@/components/task-detail";
 import { DesktopShell, MobileShell } from "@/components/shell";
+import { DatePicker } from "@/components/date-picker";
+import { layoutDay, type DaySrc } from "@/components/cal-layout";
 import { useStore, useToast } from "@/lib/store";
 import type { EventItem, Priority, TaskItem } from "@/lib/data";
 
@@ -20,6 +22,7 @@ const DOW = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
 const MON_LONG = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 const HOURS = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, "0")}:00`);
 const FILTER_KEY = "rutina.calFilter";
+const ZOOM_KEY = "rutina.calZoom";
 
 interface CalFilter {
   groups: string[];
@@ -57,6 +60,14 @@ function loadFilter(): CalFilter {
   }
 }
 
+function loadZoom(): "fit" | "detail" {
+  try {
+    return window.localStorage.getItem(ZOOM_KEY) === "detail" ? "detail" : "fit";
+  } catch {
+    return "fit";
+  }
+}
+
 function mondayOf(d: Date): Date {
   const c = new Date(d.getFullYear(), d.getMonth(), d.getDate());
   const shift = (c.getDay() + 6) % 7;
@@ -75,6 +86,12 @@ function isoWeek(d: Date): number {
 function startDate(e: EventItem): Date | null {
   if (!e.startAt) return null;
   const d = new Date(e.startAt);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function endDate(e: EventItem): Date | null {
+  if (!e.endAt) return null;
+  const d = new Date(e.endAt);
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
@@ -114,6 +131,13 @@ export default function KalenderPage() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [filter, setFilter] = useState<CalFilter>(DEFAULT_FILTER);
+  const [calZoom, setCalZoom] = useState<"fit" | "detail">("fit");
+  const [hourHeight, setHourHeight] = useState(44);
+  const [bodyW, setBodyW] = useState(0);
+  const [groupOpen, setGroupOpen] = useState<{ day: string; startMin: number } | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [mPickerOpen, setMPickerOpen] = useState(false);
+  const [overflowOpen, setOverflowOpen] = useState<{ day: string; cluster: number } | null>(null);
   const weekScrollRef = useRef<HTMLDivElement>(null);
   const filterLoaded = useRef(false);
 
@@ -126,6 +150,7 @@ export default function KalenderPage() {
     setWeekStart(mondayOf(t));
     try {
       setFilter(loadFilter());
+      setCalZoom(loadZoom());
     } catch {
       // abaikan
     }
@@ -141,11 +166,47 @@ export default function KalenderPage() {
     }
   }, [filter]);
 
-  // Grid 00:00-24:00: auto-scroll ke jam 07:00 saat pertama dibuka.
+  useEffect(() => {
+    if (!filterLoaded.current) return;
+    try {
+      window.localStorage.setItem(ZOOM_KEY, calZoom);
+    } catch {
+      // abaikan
+    }
+  }, [calZoom]);
+
+  // B: tinggi per jam — fit = tinggi body/24 agar grid 24 jam pas layar, detail 64px.
+  useEffect(() => {
+    if (calZoom !== "fit") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setHourHeight(64);
+      return;
+    }
+    const el = weekScrollRef.current;
+    if (!el) return;
+    const compute = () => {
+      const h = el.clientHeight;
+      if (h > 0) setHourHeight(Math.max(22, h / 24));
+    };
+    compute();
+    const ro = new ResizeObserver(compute);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [calZoom, ready]);
+
+  // Lebar body untuk aturan kolom minimum 64px.
   useEffect(() => {
     const el = weekScrollRef.current;
-    if (el) el.scrollTop = 7 * 44;
-  }, []);
+    if (!el) return;
+    const compute = () => {
+      const w = el.clientWidth;
+      if (w > 0) setBodyW(w);
+    };
+    compute();
+    const ro = new ResizeObserver(compute);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ready]);
 
   const shiftMonth = (delta: number) => {
     const d = new Date(viewYear, viewMonth + delta, 1);
@@ -170,6 +231,66 @@ export default function KalenderPage() {
     setSelected(t.getDate());
     say("Lompat ke minggu ini");
   };
+
+  const pickDate = (d: Date) => {
+    setWeekDir(1);
+    setWeekStart(mondayOf(d));
+    setViewYear(d.getFullYear());
+    setViewMonth(d.getMonth());
+    setSelected(d.getDate());
+  };
+
+  // A: pintasan keyboard desktop.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable || t.closest("input,textarea,select,[contenteditable='true']"))) return;
+      if (document.querySelector(".x-modal")) return;
+      if (!window.matchMedia("(min-width: 1024px)").matches) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const k = e.key;
+      if (k === "t" || k === "T") {
+        e.preventDefault();
+        goToday();
+      } else if (k === "ArrowLeft") {
+        e.preventDefault();
+        shiftWeek(-1);
+      } else if (k === "ArrowRight") {
+        e.preventDefault();
+        shiftWeek(1);
+      } else if (k === "g" || k === "G") {
+        e.preventDefault();
+        setPickerOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekStart]);
+
+  // Tutup popover +N / grup tugas dengan Esc / klik luar.
+  useEffect(() => {
+    if (!overflowOpen && !groupOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOverflowOpen(null);
+        setGroupOpen(null);
+      }
+    };
+    const onClick = (e: MouseEvent) => {
+      const el = e.target as HTMLElement;
+      if (!el.closest(".x-more-pop") && !el.closest(".x-more") && !el.closest(".x-tgroup") && !el.closest(".x-tg-pop")) {
+        setOverflowOpen(null);
+        setGroupOpen(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onClick);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onClick);
+    };
+  }, [overflowOpen, groupOpen]);
 
   const allGroups = useMemo(() => {
     const map = new Map<string, string>();
@@ -279,6 +400,7 @@ export default function KalenderPage() {
   );
 
   const byId = useMemo(() => Object.fromEntries(events.map((e) => [e.id, e])), [events]);
+  const taskById = useMemo(() => Object.fromEntries(tasks.map((t) => [t.id, t])), [tasks]);
 
   // Panel detail: hanya event minggu yang tampil. Jangan ambil dari minggu lain.
   useEffect(() => {
@@ -360,12 +482,67 @@ export default function KalenderPage() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setNowMs(Date.now());
+    const iv = window.setInterval(() => setNowMs(Date.now()), 60000);
+    return () => window.clearInterval(iv);
   }, []);
   const panelStarted = !!panel?.startAt && nowMs !== null ? new Date(panel.startAt as string).getTime() <= (nowMs as number) : false;
 
   const selDate = new Date(viewYear, viewMonth, selected);
   const selLabel = selDate.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
   const monthTitle = `${MON_LONG[viewMonth]} ${viewYear}`;
+
+  // Kunci tanggal beragenda untuk titik date picker.
+  const agendaKeys = useMemo(() => {
+    const s = new Set<string>();
+    for (const e of visible) {
+      const d = startDate(e);
+      if (d) s.add(dateKey(d));
+    }
+    for (const t of visibleTasks) {
+      const d = taskDate(t);
+      if (d) s.add(dateKey(d));
+    }
+    return s;
+  }, [visible, visibleTasks]);
+
+  const gridH = 24 * hourHeight;
+  const isCompact = hourHeight < 34;
+
+  // B detail: auto-scroll ke agenda pertama / jam sekarang.
+  useEffect(() => {
+    if (calZoom !== "detail") {
+      const el = weekScrollRef.current;
+      if (el) el.scrollTop = 0;
+      return;
+    }
+    const el = weekScrollRef.current;
+    if (!el) return;
+    let target: number | null = null;
+    const now = new Date();
+    const inWeek = weekKeySet.has(dateKey(now));
+    if (inWeek) {
+      target = (now.getHours() + now.getMinutes() / 60) * 64;
+    } else {
+      let best: number | null = null;
+      for (const e of weekListEvents) {
+        const d = startDate(e);
+        if (d) {
+          const m = (d.getHours() + d.getMinutes() / 60) * 64;
+          if (best === null || m < best) best = m;
+        }
+      }
+      for (const t of weekListTasks) {
+        const d = taskDate(t);
+        if (d) {
+          const m = Math.min(d.getHours() + d.getMinutes() / 60, 23) * 64;
+          if (best === null || m < best) best = m;
+        }
+      }
+      target = best;
+    }
+    if (target !== null) el.scrollTop = Math.max(0, target - 80);
+    else el.scrollTop = 7 * 64;
+  }, [calZoom, weekStart, weekListEvents, weekListTasks, weekKeySet]);
 
   const filterForm = (
     <div className="x-filter-form">
@@ -438,7 +615,18 @@ export default function KalenderPage() {
     <div className="r-screen">
       <h2 className="x-h">Kalender</h2>
       <div className="x-month">
-        <h3>{monthTitle}</h3>
+        <DatePicker
+          title={monthTitle}
+          titleLabel="Bulan"
+          open={mPickerOpen}
+          onOpenChange={setMPickerOpen}
+          baseYear={viewYear}
+          baseMonth={viewMonth}
+          weekStart={weekStart}
+          agendaKeys={agendaKeys}
+          onPick={pickDate}
+          onToday={goToday}
+        />
         <div className="x-pager">
           <button type="button" aria-label="Bulan sebelumnya" onClick={() => shiftMonth(-1)}>
             ‹
@@ -454,25 +642,41 @@ export default function KalenderPage() {
             {d}
           </span>
         ))}
-        {monthCells.map((c) =>
-          c.date === null ? (
-            <span key={c.key} className="x-day is-empty" />
-          ) : (
+        {monthCells.map((c) => {
+          if (c.date === null) return <span key={c.key} className="x-day is-empty" />;
+          const evs = idsByDate.get(c.date) ?? [];
+          const tks = tasksByDate.get(c.date) ?? [];
+          const total = evs.length + tks.length;
+          const colors = [...evs.map((e) => e.groupColor), ...tks.map((t) => t.groupColor)].slice(0, 3);
+          const overflow = total > 3;
+          return (
             <button
               key={c.key}
               type="button"
               className={`x-day${c.date === selected ? " is-sel" : ""}`}
               aria-pressed={c.date === selected}
-              aria-label={`${c.date} ${monthTitle}`}
-              onClick={() => setSelected(c.date as number)}
+              aria-label={`${c.date} ${monthTitle}${total > 0 ? `, ${total} agenda` : ""}`}
+              onClick={() => {
+                setSelected(c.date as number);
+                if (overflow) {
+                  const d = new Date(viewYear, viewMonth, c.date as number);
+                  setWeekDir(1);
+                  setWeekStart(mondayOf(d));
+                }
+              }}
             >
               {c.date}
-              {(idsByDate.get(c.date) ?? []).length + (tasksByDate.get(c.date) ?? []).length > 0 && (
-                <i style={{ ["--c" as string]: (idsByDate.get(c.date) ?? [])[0]?.groupColor ?? (tasksByDate.get(c.date) ?? [])[0]?.groupColor }} />
+              {total > 0 && (
+                <span className="x-dots" aria-hidden="true">
+                  {colors.map((col, i) => (
+                    <i key={i} style={{ ["--c" as string]: col, background: col }} />
+                  ))}
+                  {overflow && <span className="x-morenum">+{total - 3}</span>}
+                </span>
               )}
             </button>
-          )
-        )}
+          );
+        })}
       </div>
       <div className="x-frow" role="group" aria-label="Filter kalender">
         <button type="button" className="x-chip" onClick={() => setSheetOpen(true)}>
@@ -527,7 +731,7 @@ export default function KalenderPage() {
         <EmptyState text={`Tidak ada agenda pada ${selLabel} untuk filter saat ini.`} />
       ) : (
         <div className="x-card">
-          {dayEvents.map((e, i) => (
+          {dayEvents.slice(0, 50).map((e, i) => (
             <Link key={e.id} href={`/event/${e.id}`} className="x-mini x-rise" style={{ ["--c" as string]: e.groupColor, ["--i" as string]: i, textDecoration: "none", color: "inherit" }}>
               <i />
               <b>{e.start}</b>
@@ -585,45 +789,58 @@ export default function KalenderPage() {
     </div>
   );
 
-  const weekBlock = (e: EventItem, i = 0) => {
-    const d = startDate(e);
-    if (!d) return null;
-    const s = d.getHours() + d.getMinutes() / 60;
-    const dur = e.startAt && e.endAt
-      ? Math.max(0.5, (new Date(e.endAt).getTime() - new Date(e.startAt).getTime()) / 3600000)
-      : 1;
-    const style = { "--c": e.groupColor, "--s": s, "--h": dur, "--i": i } as React.CSSProperties;
+  const slotNew = (day: Date, ev: React.MouseEvent) => {
+    if ((ev.target as HTMLElement).closest(".x-ev") || (ev.target as HTMLElement).closest(".x-task") || (ev.target as HTMLElement).closest(".x-tgroup") || (ev.target as HTMLElement).closest(".x-tg-pop") || (ev.target as HTMLElement).closest(".x-more") || (ev.target as HTMLElement).closest(".x-more-pop")) return;
+    const rect = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+    const hour = Math.min(23, Math.max(0, Math.floor((ev.clientY - rect.top) / hourHeight)));
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const iso = `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`;
+    openNew({ tab: "event", date: iso, start: `${pad(hour)}:00`, end: hour >= 23 ? "23:59" : `${pad(hour + 1)}:00` });
+  };
+
+  type Place = { top: number; height: number; col: number; colCount: number };
+  type PlaceStyle = (x: Place) => React.CSSProperties;
+  const placeStyleOf: PlaceStyle = (p) => ({
+    top: `${p.top}px`,
+    height: `${p.height}px`,
+    left: `calc(${(p.col * 100 / p.colCount).toFixed(3)}% + 2px)`,
+    width: `calc(${(100 / p.colCount).toFixed(3)}% - 5px)`,
+  });
+
+  const renderEvent = (e: EventItem, p: Place, ps: PlaceStyle) => {
     const clash = weekEvents.some((o) => o.id !== e.id && overlaps(o, e));
+    const narrow = p.colCount > 1;
     return (
       <button
         key={e.id}
         type="button"
-        className={`x-ev x-rise${e.status === "pending" ? " x-ev--wait" : ""}${panelId === e.id ? " is-sel" : ""}`}
-        style={style}
+        className={`x-ev${e.status === "pending" ? " x-ev--wait" : ""}${panelId === e.id ? " is-sel" : ""}${narrow ? " is-narrow" : ""}`}
+        style={{ ...ps(p), ["--c" as string]: e.groupColor } as React.CSSProperties}
         onClick={(ev) => { ev.stopPropagation(); setPanelId(e.id); }}
         aria-label={`${e.title} ${e.start}-${e.end}`}
       >
         <b>{e.title}</b>
-        <time>{`${e.start}-${e.end}`}</time>
-        <span style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-          <PriorityChip value={e.priority} short />
-          {clash && <span className="x-flag x-flag--bad">Bentrok</span>}
-          {e.status === "pending" && <span className="x-flag">Menunggu</span>}
-        </span>
+        {!isCompact && !narrow && (
+          <>
+            <time>{`${e.start}-${e.end}`}</time>
+            <span style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+              <PriorityChip value={e.priority} short />
+              {clash && <span className="x-flag x-flag--bad">Bentrok</span>}
+              {e.status === "pending" && <span className="x-flag">Menunggu</span>}
+            </span>
+          </>
+        )}
       </button>
     );
   };
 
-  const weekTaskBlock = (t: TaskItem, i = 0) => {
-    const d = taskDate(t);
-    if (!d) return null;
-    const s = Math.min(d.getHours() + d.getMinutes() / 60, 23);
-    const style = { "--c": t.groupColor, "--s": s, "--i": i } as React.CSSProperties;
+  const renderTask = (t: TaskItem, p: Place, ps: PlaceStyle) => {
+    const narrow = p.colCount > 1;
     return (
       <div
         key={t.id}
-        className={`x-task x-rise${t.done ? " is-done" : ""}`}
-        style={{ ...style, cursor: "pointer" }}
+        className={`x-task${t.done ? " is-done" : ""}${narrow ? " is-narrow" : ""}`}
+        style={{ ...ps(p), ["--c" as string]: t.groupColor, cursor: "pointer" } as React.CSSProperties}
         onClick={(ev) => { ev.stopPropagation(); setTaskId(t.id); }}
         role="button"
         tabIndex={0}
@@ -643,21 +860,287 @@ export default function KalenderPage() {
           onClick={(ev) => ev.stopPropagation()}
         />
         <span className="x-task-title">{t.title}</span>
-        <time>Tenggat {taskHM(t)}</time>
+        {!narrow && !isCompact && <time>{`Tenggat ${taskHM(t)}`}</time>}
       </div>
     );
   };
 
-  const slotNew = (day: Date, ev: React.MouseEvent) => {
-    if ((ev.target as HTMLElement).closest(".x-ev") || (ev.target as HTMLElement).closest(".x-task")) return;
-    const rect = (ev.currentTarget as HTMLElement).getBoundingClientRect();
-    const hour = Math.min(23, Math.max(0, Math.floor((ev.clientY - rect.top) / 44)));
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const iso = `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`;
-    openNew({ tab: "event", date: iso, start: `${pad(hour)}:00`, end: hour >= 23 ? "23:59" : `${pad(hour + 1)}:00` });
+  const renderTaskGroup = (
+    list: TaskItem[],
+    p: Place,
+    ps: PlaceStyle,
+    dayKey: string,
+    startMin: number
+  ) => {
+    const hm = list.length > 0 ? taskHM(list[0]) : "--:--";
+    const color = list[0]?.groupColor ?? "var(--primary)";
+    const open = groupOpen !== null && groupOpen.day === dayKey && groupOpen.startMin === startMin;
+    const gid = `tg-${dayKey}-${startMin}`;
+    return (
+      <div key={gid} style={{ ...ps(p), position: "absolute" }}>
+        <button
+          type="button"
+          className="x-task x-tgroup"
+          style={{ ["--c" as string]: color, position: "absolute", inset: 0 } as React.CSSProperties}
+          onClick={(ev) => {
+            ev.stopPropagation();
+            setOverflowOpen(null);
+            setGroupOpen(open ? null : { day: dayKey, startMin });
+          }}
+          aria-expanded={open}
+          aria-label={`${list.length} tugas tenggat ${hm}`}
+        >
+          <span aria-hidden="true">☑</span>
+          <span className="x-task-title">{`${list.length} tugas · ${hm}`}</span>
+        </button>
+        {open && (
+          <div
+            className="x-more-pop x-tg-pop"
+            role="dialog"
+            aria-label={`${list.length} tugas tenggat ${hm}`}
+            style={{ ...(startMin > 720 ? { bottom: "calc(100% + 4px)" } : { top: "calc(100% + 4px)" }), left: 0, right: "auto", minWidth: 240, maxWidth: 300 }}
+            onClick={(ev) => ev.stopPropagation()}
+          >
+            {list.map((t) => (
+              <div key={t.id} className="x-tg-row">
+                <input
+                  type="checkbox"
+                  checked={t.done}
+                  onChange={() => toggleTask(t.id)}
+                  onClick={(ev) => ev.stopPropagation()}
+                  aria-label={`Selesaikan ${t.title}`}
+                />
+                <button
+                  type="button"
+                  className="x-tg-title"
+                  onClick={(ev) => {
+                    ev.stopPropagation();
+                    setGroupOpen(null);
+                    setTaskId(t.id);
+                  }}
+                >
+                  {t.title}
+                </button>
+                <PriorityChip value={t.priority} short />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
   };
 
-  const weekCols = weekDays.map((day, di) => {
+  const renderDayItems = (day: Date, dayKey: string) => {
+    const evs = weekEvents.filter((e) => {
+      const d = startDate(e);
+      return d !== null && dateKey(d) === dayKey;
+    });
+    const tks = weekTasks.filter((t) => {
+      const d = taskDate(t);
+      return d !== null && dateKey(d) === dayKey;
+    });
+    const minEv = isCompact ? 22 : 28;
+    const minTk = isCompact ? 22 : 36;
+    // Grup tugas: tenggat menit sama di hari sama jadi satu kartu.
+    const byMin = new Map<number, TaskItem[]>();
+    for (const t of tks) {
+      const d = taskDate(t);
+      const sMin = d ? d.getHours() * 60 + d.getMinutes() : 0;
+      const list = byMin.get(sMin) ?? [];
+      list.push(t);
+      byMin.set(sMin, list);
+    }
+    const groupMap = new Map<string, TaskItem[]>();
+    const taskSrc: DaySrc[] = [];
+    for (const [sMin, list] of byMin) {
+      if (list.length > 1) {
+        const id = `tg-${dayKey}-${sMin}`;
+        groupMap.set(id, list);
+        taskSrc.push({ id, kind: "taskGroup" as const, startMin: sMin, endMin: sMin + 30, minH: minTk, taskIds: list.map((t) => t.id) });
+      } else {
+        taskSrc.push({ id: list[0].id, kind: "task" as const, startMin: sMin, endMin: sMin + 30, minH: minTk });
+      }
+    }
+    const src: DaySrc[] = [
+      ...evs.map((e) => {
+        const s = startDate(e);
+        const en = endDate(e);
+        const sMin = s ? s.getHours() * 60 + s.getMinutes() : 0;
+        const eMin = en ? en.getHours() * 60 + en.getMinutes() : sMin + 60;
+        return { id: e.id, kind: "event" as const, startMin: sMin, endMin: Math.max(eMin, sMin + 30), minH: minEv };
+      }),
+      ...taskSrc,
+    ];
+    const { placed, clusters } = layoutDay(src, hourHeight, gridH);
+    const effW = Math.max(bodyW, 720);
+    const dayW = bodyW > 0 ? (effW - 48) / 7 : 160;
+    const nodes: React.ReactNode[] = [];
+    const renderedCluster = new Set<number>();
+
+    const renderSingle = (s: (typeof placed)[number], col: number, colCount: number) => {
+      const pp = { ...s, col, colCount };
+      if (s.kind === "event") {
+        const e = byId[s.id];
+        if (!e) return null;
+        return renderEvent(e, pp, placeStyleOf);
+      }
+      if (s.kind === "taskGroup") {
+        const list = groupMap.get(s.id);
+        if (!list) return null;
+        const d0 = taskDate(list[0]);
+        const sMin = d0 ? d0.getHours() * 60 + d0.getMinutes() : 0;
+        return renderTaskGroup(list, pp, placeStyleOf, dayKey, sMin);
+      }
+      const t = taskById[s.id];
+      if (!t) return null;
+      return renderTask(t, pp, placeStyleOf);
+    };
+
+    const popRows = (ordered: (typeof placed)[number][]) => {
+      const rows: React.ReactNode[] = [];
+      for (const s of ordered) {
+        if (s.kind === "event") {
+          const o = byId[s.id];
+          if (!o) continue;
+          rows.push(
+            <button
+              key={s.id}
+              type="button"
+              onClick={(ev) => {
+                ev.stopPropagation();
+                setOverflowOpen(null);
+                setGroupOpen(null);
+                setPanelId(s.id);
+              }}
+            >
+              📅 {o.title}
+            </button>
+          );
+        } else if (s.kind === "taskGroup") {
+          const list = groupMap.get(s.id) ?? [];
+          for (const t of list) {
+            rows.push(
+              <button
+                key={t.id}
+                type="button"
+                onClick={(ev) => {
+                  ev.stopPropagation();
+                  setOverflowOpen(null);
+                  setGroupOpen(null);
+                  setTaskId(t.id);
+                }}
+              >
+                ☐ {t.title} · {taskHM(t)}
+              </button>
+            );
+          }
+        } else {
+          const o = taskById[s.id];
+          if (!o) continue;
+          rows.push(
+            <button
+              key={s.id}
+              type="button"
+              onClick={(ev) => {
+                ev.stopPropagation();
+                setOverflowOpen(null);
+                setGroupOpen(null);
+                setTaskId(s.id);
+              }}
+            >
+              ☐ {o.title} · {taskHM(o)}
+            </button>
+          );
+        }
+      }
+      return rows;
+    };
+
+    for (const p of placed) {
+      const cl = clusters[p.cluster];
+      const colW = dayW / p.colCount;
+      const tooNarrow = colW < 64;
+      const overflow = p.colCount > 3;
+      if (tooNarrow) {
+        if (renderedCluster.has(p.cluster)) continue;
+        renderedCluster.add(p.cluster);
+        const ordered = [...cl].sort((a, b) => a.top - b.top);
+        const first = ordered[0];
+        const minTop = Math.min(...cl.map((c) => c.top));
+        nodes.push(renderSingle(first, 0, 1) && (
+          <div key={`n-${dayKey}-${p.cluster}`} style={{ position: "absolute", top: `${first.top}px`, height: `${first.height}px`, left: 0, right: 0, pointerEvents: "none" }}>
+            <div style={{ position: "absolute", inset: 0, right: 56, pointerEvents: "auto" }}>
+              {renderSingle({ ...first, top: 0, bottom: first.height } as typeof first, 0, 1)}
+            </div>
+          </div>
+        ));
+        nodes.push(
+          <button
+            key={`more-${dayKey}-${p.cluster}`}
+            type="button"
+            className="x-more"
+            style={{ top: `${minTop}px`, left: "calc(100% - 54px)", width: "50px" }}
+            onClick={(ev) => {
+              ev.stopPropagation();
+              setGroupOpen(null);
+              setOverflowOpen(overflowOpen && overflowOpen.day === dayKey && overflowOpen.cluster === p.cluster ? null : { day: dayKey, cluster: p.cluster });
+            }}
+            aria-label={`Tampilkan ${ordered.length - 1} agenda tersembunyi`}
+          >
+            +{ordered.length - 1}
+          </button>
+        );
+        if (overflowOpen && overflowOpen.day === dayKey && overflowOpen.cluster === p.cluster) {
+          nodes.push(
+            <div key={`pop-${dayKey}-${p.cluster}`} className="x-more-pop" role="dialog" aria-label="Agenda pada slot ini" style={{ ...(minTop > gridH / 2 ? { bottom: `${gridH - minTop + 4}px` } : { top: `${minTop + 28}px` }), left: "8px", right: "8px" }}>
+              {popRows(ordered)}
+            </div>
+          );
+        }
+      } else if (overflow) {
+        if (renderedCluster.has(p.cluster)) continue;
+        renderedCluster.add(p.cluster);
+        const ordered = [...cl].sort((a, b) => a.top - b.top);
+        const show = ordered.slice(0, 2);
+        const minTop = Math.min(...cl.map((c) => c.top));
+        for (const s of show) {
+          nodes.push(renderSingle(s, show.indexOf(s), 3));
+        }
+        nodes.push(
+          <button
+            key={`more-${dayKey}-${p.cluster}`}
+            type="button"
+            className="x-more"
+            style={{ top: `${minTop}px`, left: "calc(66.666% + 2px)", width: "calc(33.333% - 5px)" }}
+            onClick={(ev) => { ev.stopPropagation(); setGroupOpen(null); setOverflowOpen({ day: dayKey, cluster: p.cluster }); }}
+            aria-label={`Tampilkan ${ordered.length - 1} agenda tersembunyi`}
+          >
+            +{ordered.length - 2}
+          </button>
+        );
+        if (overflowOpen && overflowOpen.day === dayKey && overflowOpen.cluster === p.cluster) {
+          nodes.push(
+            <div key={`pop-${dayKey}-${p.cluster}`} className="x-more-pop" role="dialog" aria-label="Agenda pada slot ini" style={{ ...(minTop > gridH / 2 ? { bottom: `${gridH - minTop + 4}px` } : { top: `${minTop + 28}px` }), left: "8px", right: "8px" }}>
+              {popRows(ordered)}
+            </div>
+          );
+        }
+      } else {
+        nodes.push(renderSingle(p, p.col, p.colCount));
+      }
+    }
+    // Garis waktu sekarang.
+    if (dayKey === todayKey && nowMs !== null) {
+      const n = new Date(nowMs);
+      const top = (n.getHours() + n.getMinutes() / 60) * hourHeight;
+      if (top >= 0 && top <= gridH) {
+        nodes.push(<div key="now" className="x-now" style={{ top: `${top}px` }} aria-hidden="true" />);
+      }
+    }
+    return nodes;
+  };
+
+  const weekCols = weekDays.map((day) => {
     const key = dateKey(day);
     return (
       <div
@@ -667,14 +1150,7 @@ export default function KalenderPage() {
         role="button"
         aria-label={`Tambah event ${day.getDate()} ${MON_LONG[day.getMonth()]}`}
       >
-        {weekEvents.filter((e) => {
-          const d = startDate(e);
-          return d !== null && dateKey(d) === key;
-        }).map((e, i) => weekBlock(e, di * 2 + i))}
-        {weekTasks.filter((t) => {
-          const d = taskDate(t);
-          return d !== null && dateKey(d) === key;
-        }).map((t, i) => weekTaskBlock(t, di * 2 + i))}
+        {renderDayItems(day, key)}
       </div>
     );
   });
@@ -689,9 +1165,20 @@ export default function KalenderPage() {
   const hasAnything = events.length > 0 || tasks.length > 0;
 
   const desktop = (
-    <>
+    <div className="x-cal">
       <div className="x-top">
-        <h2>{weekTitle}</h2>
+        <DatePicker
+          title={weekTitle}
+          titleLabel="Minggu"
+          open={pickerOpen}
+          onOpenChange={setPickerOpen}
+          baseYear={weekStart.getFullYear()}
+          baseMonth={weekStart.getMonth()}
+          weekStart={weekStart}
+          agendaKeys={agendaKeys}
+          onPick={pickDate}
+          onToday={goToday}
+        />
         <button type="button" className="x-btn x-btn--outline x-arw" aria-label="Minggu sebelumnya" onClick={() => shiftWeek(-1)}>
           ‹
         </button>
@@ -701,6 +1188,14 @@ export default function KalenderPage() {
         <button type="button" className="x-btn x-btn--outline" onClick={goToday}>
           Hari ini
         </button>
+        <div className="x-zoom" role="group" aria-label="Zoom kalender">
+          <button type="button" className={calZoom === "fit" ? "is-on" : ""} aria-pressed={calZoom === "fit"} onClick={() => setCalZoom("fit")}>
+            Pas layar
+          </button>
+          <button type="button" className={calZoom === "detail" ? "is-on" : ""} aria-pressed={calZoom === "detail"} onClick={() => setCalZoom("detail")}>
+            Detail
+          </button>
+        </div>
         <div className="x-filter-wrap">
           <button type="button" className="x-btn x-btn--outline" style={{ width: "auto" }} aria-expanded={filterOpen} onClick={() => setFilterOpen((v) => !v)}>
             Filter{activeCount > 0 ? ` (${activeCount})` : ""}
@@ -721,15 +1216,15 @@ export default function KalenderPage() {
         />
       </div>
       <div className="x-calbody">
-        <div className="x-wk">
+        <div className={`x-wk${calZoom === "fit" ? " is-fit" : " is-detail"}${isCompact ? " is-compact" : ""}`} style={{ ["--hr" as string]: `${hourHeight}px` } as React.CSSProperties}>
           <div className="x-wk-head">
             <span />
             {weekHead}
           </div>
           <div className="x-wk-body" ref={weekScrollRef}>
             <div className="x-hrs">
-              {HOURS.map((h) => (
-                <span key={h}>{h}</span>
+              {HOURS.map((h, i) => (
+                <span key={h}>{isCompact && i % 2 === 1 ? "" : h}</span>
               ))}
             </div>
             <div key={weekStart.toISOString()} className={`x-wk-slide${weekDir >= 0 ? " is-r" : " is-l"}`} style={{ display: "contents" }}>
@@ -745,16 +1240,18 @@ export default function KalenderPage() {
               ) : nextAgenda ? (
                 <div className="x-empty" role="status">
                   Minggu ini kosong untuk filter saat ini. Agenda berikutnya: {nextAgenda.label}
-                  <div style={{ marginTop: 10 }}>
-                    <button
-                      type="button"
-                      className="x-btn x-btn--outline x-btn--sm"
-                      style={{ width: "auto" }}
-                      onClick={() => { setWeekDir(1); setWeekStart(mondayOf(nextAgenda.at)); }}
-                    >
-                      Lompat
-                    </button>
-                  </div>
+                  {calZoom === "detail" && (
+                    <div style={{ marginTop: 10 }}>
+                      <button
+                        type="button"
+                        className="x-btn x-btn--outline x-btn--sm"
+                        style={{ width: "auto" }}
+                        onClick={() => { setWeekDir(1); setWeekStart(mondayOf(nextAgenda.at)); }}
+                      >
+                        Lompat
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <EmptyState text="Minggu ini kosong untuk filter saat ini." />
@@ -846,7 +1343,7 @@ export default function KalenderPage() {
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 
   return (
