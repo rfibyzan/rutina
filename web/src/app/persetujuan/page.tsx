@@ -15,7 +15,7 @@ export default function PersetujuanPage() {
   const adminGroupIds = new Set(
     myGroups.filter((g) => g.role === "owner" || g.role === "admin").map((g) => g.name)
   );
-  const mine = approvals.filter((a) => (a.group ? adminGroupIds.has(a.group) : true));
+  const mine = approvals.filter((a) => a.group && adminGroupIds.has(a.group));
   const pending = mine.filter((a) => a.decision === null);
   const done = mine.filter((a) => a.decision !== null);
   const diajukan = approvals.filter((a) => a.byMe);

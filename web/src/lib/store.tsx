@@ -180,6 +180,16 @@ function rowToApproval(row: any, userId: string | null): Approval {
   };
 }
 
+function displayFallback(u: { user_metadata?: Record<string, unknown>; email?: string }): string {
+  const m = u.user_metadata ?? {};
+  return (
+    (m.full_name as string | undefined) ||
+    (m.name as string | undefined) ||
+    (u.email?.split("@")[0] as string | undefined) ||
+    "Pengguna"
+  );
+}
+
 function readHidden(): string[] {
   try {
     return JSON.parse(window.localStorage.getItem("rutina.hiddenGroups") ?? "[]") as string[];
@@ -241,15 +251,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setReady(true);
         return;
       }
-      const display =
-        (u.user_metadata?.full_name as string | undefined) ??
-        (u.user_metadata?.name as string | undefined) ??
-        (u.email?.split("@")[0] as string | undefined) ??
-        "Pengguna";
-      setUserName(display);
-      await supabase
-        .from("users")
-        .upsert({ id: u.id, name: display, email: u.email ?? "" }, { onConflict: "id" });
+      const { data: me } = await supabase.from("users").select("name").eq("id", u.id).maybeSingle();
+      const dbName = (me as { name?: string } | null)?.name?.trim();
+      setUserName(
+        dbName ||
+        (u.user_metadata?.full_name as string | undefined) ||
+        (u.user_metadata?.name as string | undefined) ||
+        (u.email?.split("@")[0] as string | undefined) ||
+        "Pengguna"
+      );
+      if (!dbName) {
+        await supabase
+          .from("users")
+          .upsert({ id: u.id, name: displayFallback(u), email: u.email ?? "" }, { onConflict: "id" });
+      }
 
       const FULL_SELECT =
         "id,title,description,location,start_at,end_at,priority,status,group_id,groups(name,color),subtasks(id,title,done),event_attendees(rsvp,attendance,user_id,users(name)),created_by,creator:users!events_created_by_fkey(name)";

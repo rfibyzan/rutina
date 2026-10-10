@@ -42,7 +42,7 @@ export default function BerandaPage() {
     () => upcoming.filter((e) => e.startAt && dayKey(new Date(e.startAt)) !== today).slice(0, 5),
     [upcoming, today]
   );
-  const pendingCount = upcoming.filter((e) => e.status === "pending").length;
+  const pendingCount = events.filter((e) => e.status === "pending").length;
   const openTasks = useMemo(
     () => tasks.filter((t) => !t.done).sort((a, b) => (a.dueAt ?? "9999").localeCompare(b.dueAt ?? "9999")).slice(0, 5),
     [tasks]
@@ -117,6 +117,7 @@ export default function BerandaPage() {
               <input type="checkbox" checked={t.done} onChange={() => toggleTask(t.id)} />
               <span>
                 <b>{t.title}</b>
+                {t.dueAt && t.dueAt < now.toISOString() && <span className="x-chip x-chip--p1" style={{ marginLeft: 6 }}>Terlambat</span>}
                 <br />
                 <small style={{ color: "var(--ink-2)" }}>{t.dueLabel} · {t.group}</small>
               </span>

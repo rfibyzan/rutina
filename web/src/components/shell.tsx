@@ -13,7 +13,7 @@ const NAV = [
 ];
 
 function isActive(path: string, href: string): boolean {
-  if (href === "/grup") return path === "/grup" || path.startsWith("/grup/") || path === "/persetujuan";
+  if (href === "/grup") return path === "/grup" || path.startsWith("/grup/");
   if (href === "/beranda") return path === "/beranda" || path.startsWith("/event/");
   if (href === "/kalender") return path === "/kalender" || path === "/tambah";
   return path === href;

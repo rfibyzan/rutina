@@ -13,7 +13,7 @@ Aplikasi butuh file web/.env.local berisi:
 
 Masuk dengan akun demo (sudah terisi data contoh Oktober 2026):
   Email    : demoaja@rutina.web
-  Password : RutinaDemo123
+  Password : minta ke pemilik repo (tidak disimpan di GitHub)
 
 Atau daftar akun baru lewat tombol "Daftar", dan bisa juga
 masuk dengan Google bila sudah diaktifkan di dashboard Supabase.
