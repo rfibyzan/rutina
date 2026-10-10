@@ -445,3 +445,86 @@ a.x-card { text-decoration: none; color: inherit; display: block; }
 /* Kartu profil sidebar: teks gelap di atas kartu putih */
 .x-side .x-user, .x-side .x-user .x-user-meta b { color: var(--ink); }
 .x-side .x-user .x-user-meta small { color: var(--ink-2); }
+
+/* ---- Kalender: date picker (A) ---- */
+.x-datepick-wrap { position: relative; display: inline-flex; }
+.x-datepick-btn { display: inline-flex; align-items: center; gap: 6px; background: transparent; border: 0; font: inherit; font-size: 20px; font-weight: 700; letter-spacing: -0.02em; color: inherit; padding: 6px 8px; border-radius: 8px; min-height: 44px; margin-right: 6px; }
+.x-month .x-datepick-btn { font-size: 18px; margin-right: 0; padding: 6px 4px; }
+.x-datepick-btn:hover { background: var(--primary-50); }
+.x-caret { font-size: 12px; color: var(--ink-2); }
+.x-datepick-pop { position: absolute; top: calc(100% + 8px); left: 0; z-index: 40; width: 300px; max-width: 82vw; background: var(--surface); border: var(--x-border); border-radius: 12px; padding: 12px; box-shadow: 0 12px 32px rgba(7,54,147,0.18); animation: x-pop 180ms cubic-bezier(.2,.8,.2,1) both; }
+.x-dp-head { display: flex; align-items: center; gap: 2px; }
+.x-dp-head > button { min-width: 36px; min-height: 36px; border: 0; background: transparent; font-size: 16px; border-radius: 6px; color: var(--ink); }
+.x-dp-head > button:hover { background: var(--primary-50); }
+.x-dp-title { flex: 1; text-align: center; font-weight: 700; font-size: 14px; }
+.x-dp-title button { border: 0; background: transparent; font-weight: 700; font-size: 14px; min-height: 36px; padding: 0 4px; border-radius: 6px; }
+.x-dp-title button:hover { background: var(--primary-50); }
+.x-dp-dow { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; font-size: 11px; color: var(--ink-2); margin-top: 8px; }
+.x-dp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; margin-top: 4px; }
+.x-dp-day { position: relative; min-height: 36px; min-width: 0; border-radius: 8px; border: 0; background: transparent; font-size: 13px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: var(--ink); }
+.x-dp-day:hover { background: var(--primary-50); }
+.x-dp-day.is-inweek { background: var(--primary-50); }
+.x-dp-day.is-today { outline: 2px solid var(--primary); outline-offset: -2px; font-weight: 700; }
+.x-dp-day i { width: 4px; height: 4px; border-radius: 50%; background: var(--primary); }
+.x-dp-empty { min-height: 36px; }
+.x-dp-months { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
+.x-dp-m { min-height: 44px; border-radius: 8px; border: 2px solid var(--muted); background: var(--surface); font-size: 14px; }
+.x-dp-m.is-sel { background: var(--primary); color: #fff; border-color: var(--primary); font-weight: 700; }
+.x-dp-foot { margin-top: 10px; display: flex; justify-content: flex-end; }
+
+/* ---- Kalender desktop: pas layar, flex column 100dvh (bar atas + head tetap, body flex:1) ---- */
+.r-desk:has(.x-cal) { height: 100dvh; min-height: 0; overflow: hidden; }
+.r-desk:has(.x-cal) .r-dmain { height: 100dvh; min-height: 0; overflow: hidden; }
+.x-cal { display: flex; flex-direction: column; height: 100dvh; min-height: 0; min-width: 0; overflow: hidden; }
+.x-cal .x-top { flex: 0 0 auto; }
+.x-cal .x-calbody { flex: 1; min-height: 0; overflow: hidden; grid-template-rows: minmax(0, 1fr); }
+.x-cal .x-wk { display: flex; flex-direction: column; min-height: 0; max-height: 100%; overflow-x: auto; overflow-y: hidden; padding-bottom: 0; }
+.x-cal .x-wk-head { flex: 0 0 auto; }
+.x-cal .x-wk-head, .x-cal .x-wk-body { min-width: 720px; }
+.x-cal .x-wk-body { flex: 1; min-height: 0; height: auto; max-height: none; overflow-y: auto; overflow-x: hidden; }
+.x-cal .x-wk.is-fit .x-wk-body { height: auto; max-height: none; min-height: 0; }
+.x-cal .x-wk.is-detail .x-wk-body { height: auto; max-height: none; min-height: 0; }
+.x-cal .x-panel { min-height: 0; max-height: 100%; overflow-y: auto; }
+/* Kartu tidak boleh meluap: ellipsis + min-width:0; kartu sempit hanya judul. */
+.x-wk .x-ev, .x-wk .x-task { min-width: 0; overflow: hidden; }
+.x-wk .x-ev b { min-width: 0; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.x-wk .x-ev time { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.x-wk .x-task .x-task-title { min-width: 0; }
+.x-wk .x-ev.is-narrow time, .x-wk .x-ev.is-narrow span, .x-wk .x-task.is-narrow time { display: none; }
+.x-wk .x-task.is-narrow { flex-wrap: nowrap; }
+/* Grup tugas menit sama: kartu + popover daftar. */
+.x-tgroup { width: 100%; text-align: left; }
+.x-tg-pop { min-width: 240px; max-width: 300px; }
+.x-tg-row { display: flex; align-items: center; gap: 8px; padding: 4px; min-width: 0; }
+.x-tg-row input { width: 18px; height: 18px; accent-color: var(--primary); flex: 0 0 auto; }
+.x-tg-title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700; }
+.x-tg-row .x-chip { flex: 0 0 auto; }
+/* ---- Kalender: zoom fit/detail + compact (B) ---- */
+.x-zoom { display: inline-flex; border: var(--x-border); border-radius: 8px; padding: 2px; gap: 2px; }
+.x-zoom button { border: 0; background: transparent; font-size: 13px; padding: 6px 10px; border-radius: 6px; min-height: 32px; color: var(--ink); }
+.x-zoom button.is-on { background: var(--primary); color: #fff; font-weight: 700; }
+.x-wk.is-fit .x-wk-body { height: calc(100dvh - 320px); min-height: 380px; max-height: calc(100dvh - 220px); overflow-y: auto; }
+.x-wk.is-detail .x-wk-body { max-height: calc(100dvh - 220px); overflow-y: auto; }
+.x-wk .x-ev, .x-wk .x-task { right: auto; }
+.x-wk.is-compact .x-ev { gap: 0; justify-content: center; }
+.x-wk.is-compact .x-ev b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.x-wk.is-compact .x-ev time, .x-wk.is-compact .x-ev .x-meta, .x-wk.is-compact .x-ev span { display: none; }
+.x-wk.is-compact .x-task { flex-wrap: nowrap; min-height: 22px; padding: 2px 6px; gap: 4px; align-items: center; }
+.x-wk.is-compact .x-task time { flex-basis: auto; padding-left: 0; }
+.x-now { position: absolute; left: 0; right: 0; height: 2px; background: #E5322D; z-index: 2; pointer-events: none; }
+.x-now::before { content: ""; position: absolute; left: 2px; top: -4px; width: 10px; height: 10px; border-radius: 50%; background: #E5322D; }
+
+/* ---- Kalender: anti-tindih +N (C) ---- */
+.x-more { position: absolute; border-radius: 8px; background: var(--primary); color: #fff; border: 0; font-size: 12px; font-weight: 700; padding: 2px 8px; z-index: 1; min-height: 26px; }
+.x-more-pop { position: absolute; z-index: 30; background: var(--surface); border: var(--x-border); border-radius: 10px; box-shadow: 0 8px 24px rgba(7,54,147,0.16); padding: 8px; min-width: 200px; animation: x-pop 160ms cubic-bezier(.2,.8,.2,1) both; }
+.x-more-pop button { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 8px; border-radius: 6px; font-size: 13px; min-height: 36px; color: var(--ink); }
+.x-more-pop button:hover { background: var(--primary-50); }
+.x-dots { display: flex; gap: 2px; justify-content: center; align-items: center; margin-top: 2px; }
+.x-dots i { width: 5px; height: 5px; border-radius: 50%; position: static; }
+.x-day .x-dots { position: static; }
+.x-morenum { font-size: 10px; color: var(--ink-2); font-weight: 700; }
+.x-day.is-sel .x-morenum { color: #fff; }
+
+/* Pill tugas ringkas: judul memakai sisa lebar, jam di kanan */
+.x-wk.is-compact .x-task .x-task-title { flex: 1 1 auto; min-width: 0; max-width: none; }
+.x-wk.is-compact .x-task time { flex: 0 0 auto; margin-left: auto; }
