@@ -128,7 +128,6 @@ export function NewEventForm({ prefill, onSaved }: { prefill: NewPrefill; onSave
         <input id="nm-judul" className="x-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Mis. Rapat Evaluasi Piket" autoFocus />
       </div>
       <div className="x-field">
-        <span>Waktu</span>
         <EventWhenPicker
           idPrefix="nm"
           date={date}
@@ -342,7 +341,6 @@ export function NewTaskForm({ prefill, onSaved }: { prefill: NewPrefill; onSaved
               <input id="nt-judul" className="x-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Mis. Finalisasi laporan MPTI" autoFocus />
             </div>
             <div className="x-field">
-              <span>Tenggat</span>
               <TaskWhenPicker
                 idPrefix="nt"
                 date={date}
