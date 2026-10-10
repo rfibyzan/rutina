@@ -20,8 +20,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({
   children,
-  modal,
-}: LayoutProps<"/"> & { modal: React.ReactNode }) {
+}: LayoutProps<"/">) {
   return (
     <html lang="id">
       <head>
@@ -38,7 +37,6 @@ export default function RootLayout({
           <ToastProvider>
             <div className="x-app">
               {children}
-              {modal}
               <Suspense fallback={null}>
                 <GlobalNew />
               </Suspense>

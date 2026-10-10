@@ -6,18 +6,56 @@ import {
   EmptyState,
   ErrorState,
   LoadingSkeleton,
-  Pick,
   PriorityChip,
   RsvpSegment,
   StatusChip,
 } from "@/components/ui";
+import { EventEditForm } from "@/components/event-edit-form";
+import { TaskDetail } from "@/components/task-detail";
 import { DesktopShell, MobileShell } from "@/components/shell";
 import { useStore, useToast } from "@/lib/store";
-import { EventItem, TaskItem } from "@/lib/data";
+import type { EventItem, Priority, TaskItem } from "@/lib/data";
 
 const DOW = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
 const MON_LONG = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 const HOURS = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, "0")}:00`);
+const FILTER_KEY = "rutina.calFilter";
+
+interface CalFilter {
+  groups: string[];
+  showEvent: boolean;
+  showTask: boolean;
+  priorities: Priority[];
+  statuses: ("approved" | "pending")[];
+  hideDone: boolean;
+}
+
+const DEFAULT_FILTER: CalFilter = {
+  groups: [],
+  showEvent: true,
+  showTask: true,
+  priorities: [1, 2, 3, 4],
+  statuses: ["approved", "pending"],
+  hideDone: false,
+};
+
+function loadFilter(): CalFilter {
+  try {
+    const raw = window.localStorage.getItem(FILTER_KEY);
+    if (!raw) return DEFAULT_FILTER;
+    const p = JSON.parse(raw) as Partial<CalFilter>;
+    return {
+      groups: Array.isArray(p.groups) ? p.groups.filter((x) => typeof x === "string") : [],
+      showEvent: p.showEvent !== false,
+      showTask: p.showTask !== false,
+      priorities: Array.isArray(p.priorities) && p.priorities.length > 0 ? (p.priorities.filter((x) => [1, 2, 3, 4].includes(x)) as Priority[]) : [1, 2, 3, 4],
+      statuses: Array.isArray(p.statuses) && p.statuses.length > 0 ? (p.statuses.filter((x) => x === "approved" || x === "pending") as ("approved" | "pending")[]) : ["approved", "pending"],
+      hideDone: !!p.hideDone,
+    };
+  } catch {
+    return DEFAULT_FILTER;
+  }
+}
 
 function mondayOf(d: Date): Date {
   const c = new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -62,16 +100,22 @@ function overlaps(a: EventItem, b: EventItem): boolean {
 }
 
 export default function KalenderPage() {
-  const { ready, loadError, events, tasks, reload, setRsvp, markAttendance, toggleCheck, openNew, hiddenGroups, deleteEvent, toggleTask } = useStore();
+  const { ready, loadError, events, tasks, myGroups, reload, setRsvp, markAttendance, toggleCheck, openNew, deleteEvent, toggleTask } = useStore();
   const { say } = useToast();
-  const [group, setGroup] = useState<string>("Semua");
   const [viewYear, setViewYear] = useState(2026);
   const [viewMonth, setViewMonth] = useState(9);
   const [selected, setSelected] = useState(9);
   const [weekStart, setWeekStart] = useState(() => new Date(2026, 9, 5));
+  const [weekDir, setWeekDir] = useState<1 | -1>(1);
   const [query, setQuery] = useState("");
   const [panelId, setPanelId] = useState<string | null>(null);
+  const [panelEditing, setPanelEditing] = useState(false);
+  const [taskId, setTaskId] = useState<string | null>(null);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [filter, setFilter] = useState<CalFilter>(DEFAULT_FILTER);
   const weekScrollRef = useRef<HTMLDivElement>(null);
+  const filterLoaded = useRef(false);
 
   useEffect(() => {
     const t = new Date();
@@ -80,7 +124,22 @@ export default function KalenderPage() {
     setViewMonth(t.getMonth());
     setSelected(t.getDate());
     setWeekStart(mondayOf(t));
+    try {
+      setFilter(loadFilter());
+    } catch {
+      // abaikan
+    }
+    filterLoaded.current = true;
   }, []);
+
+  useEffect(() => {
+    if (!filterLoaded.current) return;
+    try {
+      window.localStorage.setItem(FILTER_KEY, JSON.stringify(filter));
+    } catch {
+      // abaikan
+    }
+  }, [filter]);
 
   // Grid 00:00-24:00: auto-scroll ke jam 07:00 saat pertama dibuka.
   useEffect(() => {
@@ -96,12 +155,14 @@ export default function KalenderPage() {
   };
 
   const shiftWeek = (delta: number) => {
+    setWeekDir(delta >= 0 ? 1 : -1);
     const d = new Date(weekStart);
     d.setDate(d.getDate() + delta * 7);
     setWeekStart(d);
   };
 
   const goToday = () => {
+    setWeekDir(1);
     const t = new Date();
     setWeekStart(mondayOf(t));
     setViewYear(t.getFullYear());
@@ -110,27 +171,82 @@ export default function KalenderPage() {
     say("Lompat ke minggu ini");
   };
 
-  const groups = useMemo(
-    () => ["Semua", ...Array.from(new Set([...events.map((e) => e.group), ...tasks.map((t) => t.group)]))],
-    [events, tasks]
-  );
-  const activeGroup = groups.includes(group) ? group : "Semua";
+  const allGroups = useMemo(() => {
+    const map = new Map<string, string>();
+    map.set("Pribadi", "#073693");
+    for (const e of events) if (!map.has(e.group)) map.set(e.group, e.groupColor);
+    for (const t of tasks) if (!map.has(t.group)) map.set(t.group, t.groupColor);
+    for (const g of myGroups) if (!map.has(g.name)) map.set(g.name, g.color);
+    return Array.from(map.entries()).map(([name, color]) => ({ name, color }));
+  }, [events, tasks, myGroups]);
 
-  const byId = useMemo(() => Object.fromEntries(events.map((e) => [e.id, e])), [events]);
-  const visible = events.filter(
-    (e) => (activeGroup === "Semua" || e.group === activeGroup) && !hiddenGroups.includes(e.group)
+  const activeGroups = filter.groups.length === 0 ? allGroups.map((g) => g.name) : filter.groups.filter((g) => allGroups.some((a) => a.name === g));
+
+  const setF = (patch: Partial<CalFilter>) => setFilter((f) => ({ ...f, ...patch }));
+
+  const activeCount = useMemo(() => {
+    let n = 0;
+    if (filter.groups.length > 0 && filter.groups.length < allGroups.length) n += 1;
+    if (!filter.showEvent || !filter.showTask) n += 1;
+    if (filter.priorities.length < 4) n += 1;
+    if (filter.statuses.length < 2) n += 1;
+    if (filter.hideDone) n += 1;
+    return n;
+  }, [filter, allGroups.length]);
+
+  const resetFilter = () => setFilter({ ...DEFAULT_FILTER, groups: [] });
+
+  const toggleGroup = (name: string) => {
+    setFilter((f) => {
+      const base = f.groups.length === 0 ? allGroups.map((g) => g.name) : f.groups;
+      const next = base.includes(name) ? base.filter((g) => g !== name) : [...base, name];
+      if (next.length === allGroups.length) return { ...f, groups: [] };
+      return { ...f, groups: next };
+    });
+  };
+
+  const togglePriority = (p: Priority) => {
+    setFilter((f) => ({
+      ...f,
+      priorities: f.priorities.includes(p) ? f.priorities.filter((x) => x !== p) : [...f.priorities, p],
+    }));
+  };
+
+  const toggleStatus = (s: "approved" | "pending") => {
+    setFilter((f) => ({
+      ...f,
+      statuses: f.statuses.includes(s) ? f.statuses.filter((x) => x !== s) : [...f.statuses, s],
+    }));
+  };
+
+  const q = query.trim().toLowerCase();
+  const visible = useMemo(
+    () =>
+      events.filter((e) => {
+        if (!filter.showEvent) return false;
+        if (!activeGroups.includes(e.group)) return false;
+        if (!filter.priorities.includes(e.priority)) return false;
+        if (!filter.statuses.includes(e.status)) return false;
+        if (filter.hideDone && e.attendance === "done") return false;
+        if (q && !e.title.toLowerCase().includes(q)) return false;
+        return true;
+      }),
+    [events, filter, activeGroups, q]
   );
-  const visibleTasks = tasks.filter(
-    (t) => (activeGroup === "Semua" || t.group === activeGroup) && !hiddenGroups.includes(t.group)
+  const visibleTasks = useMemo(
+    () =>
+      tasks.filter((t) => {
+        if (!filter.showTask) return false;
+        if (!activeGroups.includes(t.group)) return false;
+        if (!filter.priorities.includes(t.priority)) return false;
+        if (filter.hideDone && t.done) return false;
+        if (q && !t.title.toLowerCase().includes(q)) return false;
+        return true;
+      }),
+    [tasks, filter, activeGroups, q]
   );
-  const weekEvents = useMemo(
-    () => visible.filter((e) => e.title.toLowerCase().includes(query.toLowerCase())),
-    [visible, query]
-  );
-  const weekTasks = useMemo(
-    () => visibleTasks.filter((t) => t.title.toLowerCase().includes(query.toLowerCase())),
-    [visibleTasks, query]
-  );
+  const weekEvents = visible;
+  const weekTasks = visibleTasks;
 
   const dateKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
   const [todayKey, setTodayKey] = useState<string | null>(null);
@@ -161,6 +277,8 @@ export default function KalenderPage() {
     }),
     [weekTasks, weekKeySet]
   );
+
+  const byId = useMemo(() => Object.fromEntries(events.map((e) => [e.id, e])), [events]);
 
   // Panel detail: hanya event minggu yang tampil. Jangan ambil dari minggu lain.
   useEffect(() => {
@@ -234,20 +352,87 @@ export default function KalenderPage() {
     return map;
   }, [visibleTasks, viewYear, viewMonth]);
 
-  const dayEvents = useMemo(() => {
-    const list = idsByDate.get(selected) ?? [];
-    return list.filter((e) => activeGroup === "Semua" || e.group === activeGroup);
-  }, [idsByDate, selected, activeGroup]);
-  const dayTasks = useMemo(() => {
-    const list = tasksByDate.get(selected) ?? [];
-    return list.filter((t) => activeGroup === "Semua" || t.group === activeGroup);
-  }, [tasksByDate, selected, activeGroup]);
+  const dayEvents = useMemo(() => idsByDate.get(selected) ?? [], [idsByDate, selected]);
+  const dayTasks = useMemo(() => tasksByDate.get(selected) ?? [], [tasksByDate, selected]);
 
   const panel: EventItem | undefined = panelId ? byId[panelId] : undefined;
+  const [nowMs, setNowMs] = useState<number | null>(null);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNowMs(Date.now());
+  }, []);
+  const panelStarted = !!panel?.startAt && nowMs !== null ? new Date(panel.startAt as string).getTime() <= (nowMs as number) : false;
 
   const selDate = new Date(viewYear, viewMonth, selected);
   const selLabel = selDate.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
   const monthTitle = `${MON_LONG[viewMonth]} ${viewYear}`;
+
+  const filterForm = (
+    <div className="x-filter-form">
+      <div className="x-filter-row-head">
+        <b>Filter</b>
+        <button type="button" className="x-btn x-btn--ghost x-btn--sm" style={{ width: "auto" }} onClick={resetFilter}>
+          Reset
+        </button>
+      </div>
+      <p className="x-sec">Grup</p>
+      <label className="x-fcheck">
+        <input
+          type="checkbox"
+          checked={filter.groups.length === 0}
+          onChange={() => setF({ groups: [] })}
+        />
+        <span>Semua</span>
+      </label>
+      {allGroups.map((g) => {
+        const checked = activeGroups.includes(g.name);
+        return (
+          <label key={g.name} className="x-fcheck">
+            <input type="checkbox" checked={checked} onChange={() => toggleGroup(g.name)} />
+            <i style={{ background: g.color }} aria-hidden="true" />
+            <span>{g.name}</span>
+          </label>
+        );
+      })}
+      <p className="x-sec">Jenis</p>
+      <label className="x-fcheck">
+        <input type="checkbox" checked={filter.showEvent} onChange={(e) => setF({ showEvent: e.target.checked })} />
+        <span>Event</span>
+      </label>
+      <label className="x-fcheck">
+        <input type="checkbox" checked={filter.showTask} onChange={(e) => setF({ showTask: e.target.checked })} />
+        <span>Tugas</span>
+      </label>
+      <p className="x-sec">Prioritas</p>
+      <div className="x-chips" style={{ marginTop: 0 }}>
+        {([1, 2, 3, 4] as Priority[]).map((p) => (
+          <button
+            key={p}
+            type="button"
+            className={`x-chip${filter.priorities.includes(p) ? " is-on" : ""}`}
+            aria-pressed={filter.priorities.includes(p)}
+            onClick={() => togglePriority(p)}
+          >
+            P{p}
+          </button>
+        ))}
+      </div>
+      <p className="x-sec">Status event</p>
+      <label className="x-fcheck">
+        <input type="checkbox" checked={filter.statuses.includes("approved")} onChange={() => toggleStatus("approved")} />
+        <span>Disetujui</span>
+      </label>
+      <label className="x-fcheck">
+        <input type="checkbox" checked={filter.statuses.includes("pending")} onChange={() => toggleStatus("pending")} />
+        <span>Menunggu</span>
+      </label>
+      <p className="x-sec">Lainnya</p>
+      <label className="x-fcheck">
+        <input type="checkbox" checked={filter.hideDone} onChange={(e) => setF({ hideDone: e.target.checked })} />
+        <span>Sembunyikan yang selesai</span>
+      </label>
+    </div>
+  );
 
   const mobile = (
     <div className="r-screen">
@@ -289,8 +474,49 @@ export default function KalenderPage() {
           )
         )}
       </div>
-      <div className="x-chips" role="group" aria-label="Filter grup">
-        <Pick options={groups} value={activeGroup} onChange={setGroup} label="Filter grup" />
+      <div className="x-frow" role="group" aria-label="Filter kalender">
+        <button type="button" className="x-chip" onClick={() => setSheetOpen(true)}>
+          Filter{activeCount > 0 ? ` (${activeCount})` : ""}
+        </button>
+        <button
+          type="button"
+          className={`x-chip${filter.showEvent ? " is-on" : ""}`}
+          aria-pressed={filter.showEvent}
+          onClick={() => setF({ showEvent: !filter.showEvent })}
+        >
+          Event
+        </button>
+        <button
+          type="button"
+          className={`x-chip${filter.showTask ? " is-on" : ""}`}
+          aria-pressed={filter.showTask}
+          onClick={() => setF({ showTask: !filter.showTask })}
+        >
+          Tugas
+        </button>
+        <button
+          type="button"
+          className={`x-chip${filter.hideDone ? " is-on" : ""}`}
+          aria-pressed={filter.hideDone}
+          onClick={() => setF({ hideDone: !filter.hideDone })}
+        >
+          Sembunyikan selesai
+        </button>
+        {activeCount > 0 && (
+          <button type="button" className="x-chip" onClick={resetFilter}>
+            Reset
+          </button>
+        )}
+      </div>
+      <div className="x-field">
+        <input
+          className="x-input"
+          type="search"
+          placeholder="Cari agenda..."
+          aria-label="Cari agenda"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
       </div>
       <p className="x-sec">{selDate.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "short" })}</p>
       {!ready ? (
@@ -298,7 +524,7 @@ export default function KalenderPage() {
       ) : loadError ? (
         <ErrorState text={loadError} onRetry={reload} />
       ) : dayEvents.length === 0 && dayTasks.length === 0 ? (
-        <EmptyState text={`Tidak ada agenda grup ${activeGroup} pada ${selLabel}.`} />
+        <EmptyState text={`Tidak ada agenda pada ${selLabel} untuk filter saat ini.`} />
       ) : (
         <div className="x-card">
           {dayEvents.map((e, i) => (
@@ -309,13 +535,51 @@ export default function KalenderPage() {
             </Link>
           ))}
           {dayTasks.map((t, i) => (
-            <label key={t.id} className={`x-mini x-rise${t.done ? " is-done" : ""}`} style={{ ["--c" as string]: t.groupColor, ["--i" as string]: dayEvents.length + i }}>
-              <input type="checkbox" checked={t.done} onChange={() => toggleTask(t.id)} aria-label={`Selesaikan ${t.title}`} style={{ width: 18, height: 18, accentColor: "var(--primary)" }} />
+            <div
+              key={t.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => setTaskId(t.id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setTaskId(t.id);
+                }
+              }}
+              className={`x-mini x-rise${t.done ? " is-done" : ""}`}
+              style={{ ["--c" as string]: t.groupColor, ["--i" as string]: dayEvents.length + i, cursor: "pointer" }}
+            >
+              <input
+                type="checkbox"
+                checked={t.done}
+                onChange={() => toggleTask(t.id)}
+                onClick={(e) => e.stopPropagation()}
+                aria-label={`Selesaikan ${t.title}`}
+                style={{ width: 18, height: 18, accentColor: "var(--primary)" }}
+              />
               <b>{taskHM(t)}</b>
               <span className="x-task-title">{t.title}</span>
               <span className="x-tag">Tenggat</span>
-            </label>
+            </div>
           ))}
+        </div>
+      )}
+      {sheetOpen && (
+        <div className="x-modal-back" onClick={(e) => { if (e.target === e.currentTarget) setSheetOpen(false); }}>
+          <div className="x-modal" role="dialog" aria-modal="true" aria-label="Filter kalender">
+            <div className="x-modal-head">
+              <b style={{ flex: 1 }}>Filter</b>
+              <button type="button" className="x-modal-x" aria-label="Tutup" onClick={() => setSheetOpen(false)}>
+                ✕
+              </button>
+            </div>
+            {filterForm}
+            <div style={{ marginTop: 16 }}>
+              <button type="button" className="x-btn" onClick={() => setSheetOpen(false)}>
+                Terapkan
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -359,9 +623,16 @@ export default function KalenderPage() {
       <div
         key={t.id}
         className={`x-task x-rise${t.done ? " is-done" : ""}`}
-        style={style}
-        onClick={(ev) => ev.stopPropagation()}
-        role="group"
+        style={{ ...style, cursor: "pointer" }}
+        onClick={(ev) => { ev.stopPropagation(); setTaskId(t.id); }}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setTaskId(t.id);
+          }
+        }}
         aria-label={`Tenggat ${t.title} ${taskHM(t)}`}
       >
         <input
@@ -386,7 +657,7 @@ export default function KalenderPage() {
     openNew({ tab: "event", date: iso, start: `${pad(hour)}:00`, end: hour >= 23 ? "23:59" : `${pad(hour + 1)}:00` });
   };
 
-  const weekCols = weekDays.map((day) => {
+  const weekCols = weekDays.map((day, di) => {
     const key = dateKey(day);
     return (
       <div
@@ -399,11 +670,11 @@ export default function KalenderPage() {
         {weekEvents.filter((e) => {
           const d = startDate(e);
           return d !== null && dateKey(d) === key;
-        }).map((e, i) => weekBlock(e, i))}
+        }).map((e, i) => weekBlock(e, di * 2 + i))}
         {weekTasks.filter((t) => {
           const d = taskDate(t);
           return d !== null && dateKey(d) === key;
-        }).map((t, i) => weekTaskBlock(t, i))}
+        }).map((t, i) => weekTaskBlock(t, di * 2 + i))}
       </div>
     );
   });
@@ -430,13 +701,16 @@ export default function KalenderPage() {
         <button type="button" className="x-btn x-btn--outline" onClick={goToday}>
           Hari ini
         </button>
-        <select className="x-input" aria-label="Filter grup" value={activeGroup} onChange={(e) => setGroup(e.target.value)} style={{ width: "auto" }}>
-          {groups.map((g) => (
-            <option key={g} value={g}>
-              {g}
-            </option>
-          ))}
-        </select>
+        <div className="x-filter-wrap">
+          <button type="button" className="x-btn x-btn--outline" style={{ width: "auto" }} aria-expanded={filterOpen} onClick={() => setFilterOpen((v) => !v)}>
+            Filter{activeCount > 0 ? ` (${activeCount})` : ""}
+          </button>
+          {filterOpen && (
+            <div className="x-filter-pop" role="dialog" aria-label="Filter kalender">
+              {filterForm}
+            </div>
+          )}
+        </div>
         <input
           className="x-input"
           type="search"
@@ -445,9 +719,6 @@ export default function KalenderPage() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        <button type="button" className="x-btn" style={{ width: "auto" }} onClick={() => openNew()}>
-          + Baru
-        </button>
       </div>
       <div className="x-calbody">
         <div className="x-wk">
@@ -461,30 +732,32 @@ export default function KalenderPage() {
                 <span key={h}>{h}</span>
               ))}
             </div>
-            {weekCols}
+            <div key={weekStart.toISOString()} className={`x-wk-slide${weekDir >= 0 ? " is-r" : " is-l"}`} style={{ display: "contents" }}>
+              {weekCols}
+            </div>
           </div>
           {ready && !loadError && weekEmpty && (
             <div style={{ marginTop: 12 }}>
-              {query ? (
-                <EmptyState text={`Tidak ada agenda berjudul "${query}".`} />
+              {q ? (
+                <EmptyState text={`Tidak ada agenda berjudul "${query}" untuk filter saat ini.`} />
               ) : !hasAnything ? (
-                <EmptyState text="Belum ada agenda di Supabase. Tambah lewat tombol + Tambah Event." />
+                <EmptyState text="Belum ada agenda di Supabase. Tambah lewat tombol + Baru di sidebar." />
               ) : nextAgenda ? (
                 <div className="x-empty" role="status">
-                  Minggu ini kosong. Agenda berikutnya: {nextAgenda.label}
+                  Minggu ini kosong untuk filter saat ini. Agenda berikutnya: {nextAgenda.label}
                   <div style={{ marginTop: 10 }}>
                     <button
                       type="button"
                       className="x-btn x-btn--outline x-btn--sm"
                       style={{ width: "auto" }}
-                      onClick={() => setWeekStart(mondayOf(nextAgenda.at))}
+                      onClick={() => { setWeekDir(1); setWeekStart(mondayOf(nextAgenda.at)); }}
                     >
                       Lompat
                     </button>
                   </div>
                 </div>
               ) : (
-                <EmptyState text="Minggu ini kosong." />
+                <EmptyState text="Minggu ini kosong untuk filter saat ini." />
               )}
             </div>
           )}
@@ -507,6 +780,11 @@ export default function KalenderPage() {
               <p className="x-sub" style={{ marginTop: 8 }}>{panel.note || "Agenda pribadi."}</p>
               <p className="x-sec">Kehadiran</p>
               <RsvpSegment value={panel.rsvp} onChange={(v) => { setRsvp(panel.id, v); say(`RSVP ${panel.title}: ${v}`); }} />
+              {!panelStarted && (
+                <p className="x-sub" style={{ marginTop: 8 }}>
+                  Presensi dibuka saat acara dimulai.
+                </p>
+              )}
               <p className="x-sec">Peserta</p>
               <div className="x-people">
                 {panel.attendees.map((a) => (
@@ -521,18 +799,20 @@ export default function KalenderPage() {
                   <span>{c.label}</span>
                 </label>
               ))}
+              {panelStarted && (
+                <div className="x-btns" style={{ margin: "14px 0 16px" }}>
+                  <button type="button" className={`x-btn${panel.attendance === "done" ? " is-done" : ""}`} onClick={() => { markAttendance(panel.id, "done"); say(`${panel.title} ditandai selesai`); }}>
+                    Tandai Selesai
+                  </button>
+                  <button type="button" className="x-btn x-btn--outline" onClick={() => { markAttendance(panel.id, "absent"); say(`Ketidakhadiran ${panel.title} dicatat`); }}>
+                    Tidak Hadir
+                  </button>
+                </div>
+              )}
               <div className="x-btns" style={{ margin: "14px 0 16px" }}>
-                <button type="button" className={`x-btn${panel.attendance === "done" ? " is-done" : ""}`} onClick={() => { markAttendance(panel.id, "done"); say(`${panel.title} ditandai selesai`); }}>
-                  Tandai Selesai
-                </button>
-                <button type="button" className="x-btn x-btn--outline" onClick={() => { markAttendance(panel.id, "absent"); say(`Ketidakhadiran ${panel.title} dicatat`); }}>
-                  Tidak Hadir
-                </button>
-              </div>
-              <div className="x-btns" style={{ margin: "14px 0 16px" }}>
-                <Link className="x-btn x-btn--outline" href={`/event/${panel.id}`}>
+                <button type="button" className="x-btn x-btn--outline" onClick={() => setPanelEditing(true)}>
                   Edit
-                </Link>
+                </button>
                 <button
                   type="button"
                   className="x-btn x-btn--ghost"
@@ -559,6 +839,13 @@ export default function KalenderPage() {
           )}
         </aside>
       </div>
+      {panelEditing && panel && (
+        <div className="x-modal-back" onClick={(e) => { if (e.target === e.currentTarget) setPanelEditing(false); }}>
+          <div className="x-modal" role="dialog" aria-modal="true" aria-label={`Edit ${panel.title}`}>
+            <EventEditForm event={panel} onDone={() => setPanelEditing(false)} />
+          </div>
+        </div>
+      )}
     </>
   );
 
@@ -566,6 +853,7 @@ export default function KalenderPage() {
     <>
       <MobileShell>{mobile}</MobileShell>
       <DesktopShell>{desktop}</DesktopShell>
+      <TaskDetail taskId={taskId} onClose={() => setTaskId(null)} />
     </>
   );
 }
