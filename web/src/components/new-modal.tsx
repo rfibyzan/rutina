@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useMemo } from "react";
 import { PrioritySegment } from "@/components/ui";
+import { EventWhenPicker, TaskWhenPicker } from "@/components/when-picker";
 import { useStore, useToast } from "@/lib/store";
 import type { NewPrefill, Priority } from "@/lib/data";
 
@@ -119,24 +121,40 @@ export function NewEventForm({ prefill, onSaved }: { prefill: NewPrefill; onSave
     onSaved?.(res.id ?? "");
   };
 
-  return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        doSave(false);
-      }}
-      onKeyDown={(e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-          e.preventDefault();
-          doSave(false);
-        }
-      }}
-    >
+  const mainCol = (
+    <>
       <div className="x-field" style={{ marginTop: 0 }}>
         <label htmlFor="nm-judul">Judul</label>
         <input id="nm-judul" className="x-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Mis. Rapat Evaluasi Piket" autoFocus />
       </div>
       <div className="x-field">
+        <span>Waktu</span>
+        <EventWhenPicker
+          idPrefix="nm"
+          date={date}
+          start={start}
+          end={end}
+          onDateChange={setDate}
+          onStartChange={setStart}
+          onEndChange={setEnd}
+        />
+      </div>
+      <div className="x-field">
+        <span>Prioritas</span>
+        <PrioritySegment value={priority} onChange={setPriority} />
+      </div>
+      {!more && (
+        <div className="x-field">
+          <label htmlFor="nm-lokasi">Lokasi</label>
+          <input id="nm-lokasi" className="x-input" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Mis. Sekretariat BEM FT" />
+        </div>
+      )}
+    </>
+  );
+
+  const moreCol = (
+    <>
+      <div className="x-field" style={{ marginTop: 0 }}>
         <label htmlFor="nm-grup">Kalender</label>
         <select id="nm-grup" className="x-input" value={groupId} onChange={(e) => setGroupId(e.target.value)}>
           <option value="pribadi">Pribadi</option>
@@ -148,83 +166,104 @@ export function NewEventForm({ prefill, onSaved }: { prefill: NewPrefill; onSave
         </select>
       </div>
       <div className="x-field">
-        <label htmlFor="nm-tgl">Tanggal</label>
-        <input id="nm-tgl" className="x-input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        <label htmlFor="nm-lokasi2">Lokasi</label>
+        <input id="nm-lokasi2" className="x-input" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Mis. Sekretariat BEM FT" />
       </div>
       <div className="x-field">
-        <span>Mulai–Selesai</span>
-        <div className="x-two">
-          <input className="x-input" type="time" value={start} onChange={(e) => setStart(e.target.value)} aria-label="Jam mulai" />
-          <input className="x-input" type="time" value={end} onChange={(e) => setEnd(e.target.value)} aria-label="Jam selesai" />
-        </div>
+        <label htmlFor="nm-tamu">Undang peserta (email, pisahkan koma)</label>
+        <input id="nm-tamu" className="x-input" value={guests} onChange={(e) => setGuests(e.target.value)} placeholder="teman@students.undip.ac.id" inputMode="email" />
       </div>
       <div className="x-field">
-        <label htmlFor="nm-lokasi">Lokasi</label>
-        <input id="nm-lokasi" className="x-input" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Mis. Sekretariat BEM FT" />
-      </div>
-      <div className="x-field">
-        <button type="button" className="x-btn x-btn--ghost x-btn--sm" onClick={() => setMore((v) => !v)} aria-expanded={more}>
-          Opsi lainnya {more ? "▾" : "▸"}
-        </button>
-      </div>
-      {more && (
-        <>
-          <div className="x-field">
-            <label htmlFor="nm-tamu">Undang peserta (email, pisahkan koma)</label>
-            <input id="nm-tamu" className="x-input" value={guests} onChange={(e) => setGuests(e.target.value)} placeholder="teman@students.undip.ac.id" inputMode="email" />
-          </div>
-          <div className="x-field">
-            <span>Prioritas</span>
-            <PrioritySegment value={priority} onChange={setPriority} />
-          </div>
-          <div className="x-field">
-            <span>Ulangi</span>
-            <div className="x-chips" role="group" aria-label="Pengulangan">
-              {["Tidak berulang", "Mingguan"].map((r) => (
-                <button key={r} type="button" className={`x-chip${r === recur ? " is-on" : ""}`} aria-pressed={r === recur} onClick={() => setRecur(r)}>
-                  {r}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="x-field">
-            <label htmlFor="nm-ingat">Pengingat</label>
-            <select id="nm-ingat" className="x-input" value={reminder === null ? "" : String(reminder)} onChange={(e) => setReminder(e.target.value === "" ? null : parseInt(e.target.value, 10))}>
-              {REMINDERS.map((r) => (
-                <option key={r.label} value={r.value === null ? "" : String(r.value)}>
-                  {r.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="x-field">
-            <label htmlFor="nm-cat">Catatan</label>
-            <textarea id="nm-cat" className="x-input" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
-          </div>
-        </>
-      )}
-      {role === "contributor" && (
-        <div className="x-info">
-          Kamu Kontributor di grup ini. Event akan diajukan ke Admin untuk disetujui.
-        </div>
-      )}
-      {clash && (
-        <div className="x-warn">
-          <b>Bentrok dengan:</b>
-          {clash.map((c) => (
-            <div key={c}>· {c}</div>
+        <span>Ulangi</span>
+        <div className="x-chips" role="group" aria-label="Pengulangan">
+          {["Tidak berulang", "Mingguan"].map((r) => (
+            <button key={r} type="button" className={`x-chip${r === recur ? " is-on" : ""}`} aria-pressed={r === recur} onClick={() => setRecur(r)}>
+              {r}
+            </button>
           ))}
         </div>
-      )}
-      {error && (
-        <div className="x-err" role="alert">
-          {error}
-        </div>
-      )}
-      <div style={{ marginTop: 16 }} className="x-btns">
-        <button type="submit" className="x-btn" disabled={saving}>
-          {saving ? "Menyimpan..." : clash ? "Simpan juga" : role === "contributor" ? "Ajukan" : "Simpan"}
+      </div>
+      <div className="x-field">
+        <label htmlFor="nm-ingat">Pengingat</label>
+        <select id="nm-ingat" className="x-input" value={reminder === null ? "" : String(reminder)} onChange={(e) => setReminder(e.target.value === "" ? null : parseInt(e.target.value, 10))}>
+          {REMINDERS.map((r) => (
+            <option key={r.label} value={r.value === null ? "" : String(r.value)}>
+              {r.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="x-field">
+        <label htmlFor="nm-cat">Catatan</label>
+        <textarea id="nm-cat" className="x-input" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+      </div>
+    </>
+  );
+
+  return (
+    <form
+      className="x-newform"
+      onSubmit={(e) => {
+        e.preventDefault();
+        doSave(false);
+      }}
+      onKeyDown={(e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+          e.preventDefault();
+          doSave(false);
+        }
+      }}
+    >
+      <div className="x-newbody">
+        {more ? (
+          <div className="x-newgrid">
+            <div>{mainCol}</div>
+            <div>{moreCol}</div>
+          </div>
+        ) : (
+          <>
+            <div className="x-field" style={{ marginTop: 0 }}>
+              <label htmlFor="nm-grup-s">Kalender</label>
+              <select id="nm-grup-s" className="x-input" value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+                <option value="pribadi">Pribadi</option>
+                {myGroups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {mainCol}
+          </>
+        )}
+        {role === "contributor" && (
+          <div className="x-info">
+            Kamu Kontributor di grup ini. Event akan diajukan ke Admin untuk disetujui.
+          </div>
+        )}
+        {clash && (
+          <div className="x-warn">
+            <b>Bentrok dengan:</b>
+            {clash.map((c) => (
+              <div key={c}>· {c}</div>
+            ))}
+          </div>
+        )}
+        {error && (
+          <div className="x-err" role="alert">
+            {error}
+          </div>
+        )}
+      </div>
+      <div className="x-newfoot">
+        <button type="button" className="x-btn x-btn--ghost x-btn--sm x-newopt" onClick={() => setMore((v) => !v)} aria-expanded={more}>
+          Opsi lainnya {more ? "▾" : "▸"}
         </button>
+        <div className="x-btns">
+          <button type="submit" className="x-btn" disabled={saving}>
+            {saving ? "Menyimpan..." : clash ? "Simpan juga" : role === "contributor" ? "Ajukan" : "Simpan"}
+          </button>
+        </div>
       </div>
     </form>
   );
@@ -237,6 +276,7 @@ export function NewTaskForm({ prefill, onSaved }: { prefill: NewPrefill; onSaved
   const [groupId, setGroupId] = useState<string>(prefill.groupId ?? "pribadi");
   const [date, setDate] = useState(prefill.date ?? "");
   const [time, setTime] = useState(prefill.start ?? "");
+  const [noDeadline, setNoDeadline] = useState(false);
   const [priority, setPriority] = useState<Priority>(3);
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
@@ -258,12 +298,16 @@ export function NewTaskForm({ prefill, onSaved }: { prefill: NewPrefill; onSaved
       setError("Judul minimal 3 huruf.");
       return;
     }
+    if (!noDeadline && !date) {
+      setError("Isi tanggal tenggat atau pilih Tanpa tenggat.");
+      return;
+    }
     setError("");
     setSaving(true);
     const ok = await addTask({
       title: title.trim(),
       groupId: groupId === "pribadi" ? null : groupId,
-      dueAt: date ? toISODate(date, time) : null,
+      dueAt: noDeadline ? null : date ? toISODate(date, time || "23:59") : null,
       priority,
       note: note.trim(),
     });
@@ -278,6 +322,7 @@ export function NewTaskForm({ prefill, onSaved }: { prefill: NewPrefill; onSaved
 
   return (
     <form
+      className="x-newform"
       onSubmit={(e) => {
         e.preventDefault();
         doSave();
@@ -289,45 +334,60 @@ export function NewTaskForm({ prefill, onSaved }: { prefill: NewPrefill; onSaved
         }
       }}
     >
-      <div className="x-field" style={{ marginTop: 0 }}>
-        <label htmlFor="nt-judul">Tugas</label>
-        <input id="nt-judul" className="x-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Mis. Finalisasi laporan MPTI" autoFocus />
-      </div>
-      <div className="x-field">
-        <label htmlFor="nt-grup">Kalender</label>
-        <select id="nt-grup" className="x-input" value={groupId} onChange={(e) => setGroupId(e.target.value)}>
-          <option value="pribadi">Pribadi</option>
-          {myGroups.map((g) => (
-            <option key={g.id} value={g.id}>
-              {g.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="x-field">
-        <span>Tenggat</span>
-        <div className="x-two">
-          <input className="x-input" type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Tanggal tenggat" />
-          <input className="x-input" type="time" value={time} onChange={(e) => setTime(e.target.value)} aria-label="Jam tenggat" />
+      <div className="x-newbody">
+        <div className="x-newgrid">
+          <div>
+            <div className="x-field" style={{ marginTop: 0 }}>
+              <label htmlFor="nt-judul">Tugas</label>
+              <input id="nt-judul" className="x-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Mis. Finalisasi laporan MPTI" autoFocus />
+            </div>
+            <div className="x-field">
+              <span>Tenggat</span>
+              <TaskWhenPicker
+                idPrefix="nt"
+                date={date}
+                time={time}
+                noDeadline={noDeadline}
+                onDateChange={setDate}
+                onTimeChange={setTime}
+                onNoDeadlineChange={setNoDeadline}
+              />
+            </div>
+            <div className="x-field">
+              <span>Prioritas</span>
+              <PrioritySegment value={priority} onChange={setPriority} />
+            </div>
+          </div>
+          <div>
+            <div className="x-field" style={{ marginTop: 0 }}>
+              <label htmlFor="nt-grup">Kalender</label>
+              <select id="nt-grup" className="x-input" value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+                <option value="pribadi">Pribadi</option>
+                {myGroups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="x-field">
+              <label htmlFor="nt-cat">Catatan</label>
+              <textarea id="nt-cat" className="x-input" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+            </div>
+          </div>
         </div>
+        {error && (
+          <div className="x-err" role="alert">
+            {error}
+          </div>
+        )}
       </div>
-      <div className="x-field">
-        <span>Prioritas</span>
-        <PrioritySegment value={priority} onChange={setPriority} />
-      </div>
-      <div className="x-field">
-        <label htmlFor="nt-cat">Catatan</label>
-        <textarea id="nt-cat" className="x-input" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
-      </div>
-      {error && (
-        <div className="x-err" role="alert">
-          {error}
+      <div className="x-newfoot">
+        <div className="x-btns">
+          <button type="submit" className="x-btn" disabled={saving}>
+            {saving ? "Menyimpan..." : "Simpan Tugas"}
+          </button>
         </div>
-      )}
-      <div style={{ marginTop: 16 }}>
-        <button type="submit" className="x-btn" disabled={saving}>
-          {saving ? "Menyimpan..." : "Simpan Tugas"}
-        </button>
       </div>
     </form>
   );
@@ -362,7 +422,7 @@ export function NewModal({ onClose }: { onClose?: () => void }) {
         if (e.target === backRef.current) done();
       }}
     >
-      <div className="x-modal" role="dialog" aria-modal="true" aria-label="Baru">
+      <div className="x-modal x-modal--wide" role="dialog" aria-modal="true" aria-label="Baru">
         <div className="x-modal-head">
           <div className="x-tabs" role="group" aria-label="Jenis" style={{ marginTop: 0, flex: 1 }}>
             {(["event", "task"] as const).map((t) => (
