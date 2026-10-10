@@ -70,6 +70,7 @@ export interface TaskItem {
   title: string;
   group: string;
   groupColor: string;
+  groupId?: string | null;
   dueLabel: string;
   dueAt: string | null;
   priority: Priority;

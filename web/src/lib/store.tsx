@@ -29,7 +29,6 @@ interface Store {
   events: EventItem[];
   tasks: TaskItem[];
   myGroups: MyGroup[];
-  hiddenGroups: string[];
   approvals: Approval[];
   unreadCount: number;
   newOpen: boolean;
@@ -50,7 +49,8 @@ interface Store {
   duplicateEvent: (id: string) => Promise<void>;
   addTask: (t: { title: string; groupId: string | null; dueAt: string | null; priority: TaskItem["priority"]; note: string }) => Promise<boolean>;
   toggleTask: (id: string) => void;
-  toggleHiddenGroup: (name: string) => void;
+  updateTask: (id: string, patch: { title?: string; note?: string; priority?: TaskItem["priority"]; dueAt?: string | null; groupId?: string | null }) => Promise<boolean>;
+  deleteTask: (id: string) => Promise<boolean>;
   markNotifsRead: () => Promise<void>;
   signOut: () => Promise<void>;
   resetDemo: () => void;
@@ -148,6 +148,7 @@ function rowToTask(row: any): TaskItem {
     title: String(row.title ?? "(Tanpa judul)"),
     group: row.groups?.name ?? "Pribadi",
     groupColor: row.groups?.color ?? "#073693",
+    groupId: row.group_id ? String(row.group_id) : null,
     dueLabel: due ? `${fmtDateLabel(due)} · ${fmtTime(due)}` : "Tanpa tenggat",
     dueAt: due ? due.toISOString() : null,
     priority: [1, 2, 3, 4].includes(row.priority) ? row.priority : 3,
@@ -190,14 +191,6 @@ function displayFallback(u: { user_metadata?: Record<string, unknown>; email?: s
   );
 }
 
-function readHidden(): string[] {
-  try {
-    return JSON.parse(window.localStorage.getItem("rutina.hiddenGroups") ?? "[]") as string[];
-  } catch {
-    return [];
-  }
-}
-
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [supabase] = useState(() => createClient());
   const [ready, setReady] = useState(false);
@@ -208,7 +201,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [events, setEvents] = useState<EventItem[]>([]);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [myGroups, setMyGroups] = useState<MyGroup[]>([]);
-  const [hiddenGroups, setHiddenGroups] = useState<string[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [newOpen, setNewOpen] = useState(false);
@@ -221,18 +213,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
   const closeNew = useCallback(() => setNewOpen(false), []);
 
-  const toggleHiddenGroup = useCallback((name: string) => {
-    setHiddenGroups((prev) => {
-      const next = prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name];
-      try {
-        window.localStorage.setItem("rutina.hiddenGroups", JSON.stringify(next));
-      } catch {
-        // abaikan
-      }
-      return next;
-    });
-  }, []);
-
   const load = useCallback(async () => {
     setReady(false);
     setLoadError(null);
@@ -241,7 +221,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const u = session.session?.user ?? null;
       setUser(u);
       setAuthReady(true);
-      setHiddenGroups(readHidden());
       if (!u) {
         setEvents([]);
         setTasks([]);
@@ -629,6 +608,42 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [supabase, tasks]
   );
 
+  const updateTask = useCallback(
+    async (
+      id: string,
+      patch: { title?: string; note?: string; priority?: TaskItem["priority"]; dueAt?: string | null; groupId?: string | null }
+    ): Promise<boolean> => {
+      const update: Record<string, unknown> = {};
+      if (patch.title !== undefined) update.title = patch.title;
+      if (patch.note !== undefined) update.description = patch.note;
+      if (patch.priority !== undefined) update.priority = patch.priority;
+      if (patch.dueAt !== undefined) update.due_at = patch.dueAt;
+      if (patch.groupId !== undefined) update.group_id = patch.groupId;
+      if (Object.keys(update).length === 0) return true;
+      const { error } = await supabase.from("tasks").update(update).eq("id", id);
+      if (error) {
+        setLoadError(`Gagal mengubah tugas: ${error.message}`);
+        return false;
+      }
+      await load();
+      return true;
+    },
+    [load, supabase]
+  );
+
+  const deleteTask = useCallback(
+    async (id: string): Promise<boolean> => {
+      const { error } = await supabase.from("tasks").delete().eq("id", id);
+      if (error) {
+        setLoadError(`Gagal menghapus tugas: ${error.message}`);
+        return false;
+      }
+      await load();
+      return true;
+    },
+    [load, supabase]
+  );
+
   const markNotifsRead = useCallback(async () => {
     if (!user) return;
     await supabase.from("notifications").update({ read_at: new Date().toISOString() }).eq("user_id", user.id).is("read_at", null);
@@ -650,8 +665,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [load]);
 
   const value = useMemo(
-    () => ({ ready, authReady, user, userName, loadError, events, tasks, myGroups, hiddenGroups, approvals, unreadCount, newOpen, newPrefill, openNew, closeNew, reload: load, setRsvp, markAttendance, toggleCheck, addChecklist, decide, removeApproval, addEvent, checkConflict, updateEvent, deleteEvent, duplicateEvent, addTask, toggleTask, toggleHiddenGroup, markNotifsRead, signOut, resetDemo }),
-    [ready, authReady, user, userName, loadError, events, tasks, myGroups, hiddenGroups, approvals, unreadCount, newOpen, newPrefill, openNew, closeNew, load, setRsvp, markAttendance, toggleCheck, addChecklist, decide, removeApproval, addEvent, checkConflict, updateEvent, deleteEvent, duplicateEvent, addTask, toggleTask, toggleHiddenGroup, markNotifsRead, signOut, resetDemo]
+    () => ({ ready, authReady, user, userName, loadError, events, tasks, myGroups, approvals, unreadCount, newOpen, newPrefill, openNew, closeNew, reload: load, setRsvp, markAttendance, toggleCheck, addChecklist, decide, removeApproval, addEvent, checkConflict, updateEvent, deleteEvent, duplicateEvent, addTask, toggleTask, updateTask, deleteTask, markNotifsRead, signOut, resetDemo }),
+    [ready, authReady, user, userName, loadError, events, tasks, myGroups, approvals, unreadCount, newOpen, newPrefill, openNew, closeNew, load, setRsvp, markAttendance, toggleCheck, addChecklist, decide, removeApproval, addEvent, checkConflict, updateEvent, deleteEvent, duplicateEvent, addTask, toggleTask, updateTask, deleteTask, markNotifsRead, signOut, resetDemo]
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

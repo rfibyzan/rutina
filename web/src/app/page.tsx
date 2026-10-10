@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Asterisk } from "@/components/ui";
 import { useStore, useToast } from "@/lib/store";
@@ -150,24 +150,80 @@ function LoginForm({ idp }: { idp: string }) {
   );
 }
 
+function BlueAst({ cls }: { cls: string }) {
+  return (
+    <span className={`x-ast-float ${cls}`} aria-hidden="true">
+      <Asterisk />
+    </span>
+  );
+}
+
+function BluePanel({
+  className,
+  children,
+}: {
+  className: string;
+  children: React.ReactNode;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const rafRef = useRef(0);
+  const [burst, setBurst] = useState(false);
+
+  useEffect(() => () => cancelAnimationFrame(rafRef.current), []);
+
+  const onMove = (e: React.PointerEvent) => {
+    const el = panelRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const nx = (e.clientX - rect.left) / Math.max(1, rect.width) - 0.5;
+    const ny = (e.clientY - rect.top) / Math.max(1, rect.height) - 0.5;
+    cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
+      el.style.setProperty("--mx", nx.toFixed(3));
+      el.style.setProperty("--my", ny.toFixed(3));
+    });
+  };
+
+  const onLeave = () => {
+    const el = panelRef.current;
+    if (!el) return;
+    cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
+      el.style.setProperty("--mx", "0");
+      el.style.setProperty("--my", "0");
+    });
+  };
+
+  const onBurst = () => {
+    setBurst(true);
+    window.setTimeout(() => setBurst(false), 650);
+  };
+
+  return (
+    <div
+      ref={panelRef}
+      onPointerMove={onMove}
+      onPointerLeave={onLeave}
+      onClick={onBurst}
+      className={`${className}${burst ? " is-burst" : ""}`}
+    >
+      {children}
+    </div>
+  );
+}
+
 export default function LoginPage() {
   return (
     <>
       <div className="r-mobile">
         <div className="x-login-m">
-          <div className="x-login x-login-hero">
-            <span className="x-ast-float x-ast-f1" aria-hidden="true">
-              <Asterisk />
-            </span>
-            <span className="x-ast-float x-ast-f2" aria-hidden="true">
-              <Asterisk />
-            </span>
-            <span className="x-ast-float x-ast-f3" aria-hidden="true">
-              <Asterisk />
-            </span>
+          <BluePanel className="x-login x-login-hero">
+            <BlueAst cls="x-ast-f1" />
+            <BlueAst cls="x-ast-f2" />
+            <BlueAst cls="x-ast-f3" />
             <h1 className="x-wordmark x-login-anim">RUTINA</h1>
             <p className="x-login-anim x-login-anim--d1">Jadwal pribadi dan bersama, rapi di satu tempat.</p>
-          </div>
+          </BluePanel>
           <div className="x-login-form x-login-sheet x-login-fade">
             <LoginForm idp="m" />
           </div>
@@ -175,26 +231,18 @@ export default function LoginPage() {
       </div>
       <div className="r-desktop">
         <div className="x-login-split">
-          <div className="x-login-brand">
-            <span className="x-ast-float x-ast-f1" aria-hidden="true">
-              <Asterisk />
-            </span>
-            <span className="x-ast-float x-ast-f2" aria-hidden="true">
-              <Asterisk />
-            </span>
-            <span className="x-ast-float x-ast-f3" aria-hidden="true">
-              <Asterisk />
-            </span>
-            <span className="x-ast-float x-ast-f4" aria-hidden="true">
-              <Asterisk />
-            </span>
+          <BluePanel className="x-login-brand">
+            <BlueAst cls="x-ast-f1" />
+            <BlueAst cls="x-ast-f2" />
+            <BlueAst cls="x-ast-f3" />
+            <BlueAst cls="x-ast-f4" />
             <h1 className="x-wordmark x-login-anim" style={{ position: "relative" }}>
               RUTINA
             </h1>
             <p className="x-login-anim x-login-anim--d1" style={{ position: "relative", fontSize: 17, marginTop: 10, maxWidth: 320 }}>
               Jadwal pribadi dan bersama, rapi di satu tempat. Kalender BEM FT, Kelompok 10 MPTI, dan UKM Futsal.
             </p>
-          </div>
+          </BluePanel>
           <div className="x-login-form x-login-fade">
             <h2 className="x-h">Masuk ke RUTINA</h2>
             <p className="x-sub">Kelompok 10 MPTI, Undip</p>

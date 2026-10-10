@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { PrioritySegment } from "@/components/ui";
 import { useStore, useToast } from "@/lib/store";
 import type { NewPrefill, Priority } from "@/lib/data";
@@ -336,7 +335,6 @@ export function NewTaskForm({ prefill, onSaved }: { prefill: NewPrefill; onSaved
 
 export function NewModal({ onClose }: { onClose?: () => void }) {
   const { newOpen, newPrefill, closeNew } = useStore();
-  const router = useRouter();
   const [tab, setTab] = useState<"event" | "task">(newPrefill.tab ?? "event");
   const backRef = useRef<HTMLDivElement>(null);
 
@@ -382,17 +380,6 @@ export function NewModal({ onClose }: { onClose?: () => void }) {
         ) : (
           <NewTaskForm prefill={newPrefill} onSaved={done} />
         )}
-        <button
-          type="button"
-          className="x-sub"
-          style={{ marginTop: 12, background: "none", border: 0, padding: 0 }}
-          onClick={() => {
-            done();
-            router.push("/tambah");
-          }}
-        >
-          Buka halaman penuh
-        </button>
       </div>
     </div>
   );
