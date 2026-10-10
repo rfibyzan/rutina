@@ -49,13 +49,14 @@ export function StatusChip({ status }: { status: EventItem["status"] }) {
   );
 }
 
-export function EventRow({ event }: { event: EventItem }) {
+export function EventRow({ event, index = 0, showDate = false }: { event: EventItem; index?: number; showDate?: boolean }) {
   const colorVar = `var(--p${event.priority})`;
   return (
-    <Link className="x-event" style={{ ["--c" as string]: colorVar }} href={`/event/${event.id}`}>
+    <Link className="x-event x-rise" style={{ ["--c" as string]: colorVar, ["--i" as string]: index } as React.CSSProperties} href={`/event/${event.id}`}>
       <time>{event.start}</time>
       <div>
         <h4>{event.title}</h4>
+        {showDate && <p className="x-sub" style={{ margin: "2px 0 0" }}>{event.dateLabel}</p>}
         <div className="x-meta">
           <span className="x-tag">{event.group}</span>
           <PriorityChip value={event.priority} />

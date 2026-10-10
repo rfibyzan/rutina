@@ -154,12 +154,21 @@ export default function LoginPage() {
   return (
     <>
       <div className="r-mobile">
-        <div className="x-login">
-          <Asterisk className="x-ast x-deco2" />
-          <Asterisk className="x-ast x-deco" />
-          <h1 className="x-wordmark">RUTINA</h1>
-          <p>Jadwal pribadi dan bersama, rapi di satu tempat.</p>
-          <div className="x-stack">
+        <div className="x-login-m">
+          <div className="x-login x-login-hero">
+            <span className="x-ast-float x-ast-f1" aria-hidden="true">
+              <Asterisk />
+            </span>
+            <span className="x-ast-float x-ast-f2" aria-hidden="true">
+              <Asterisk />
+            </span>
+            <span className="x-ast-float x-ast-f3" aria-hidden="true">
+              <Asterisk />
+            </span>
+            <h1 className="x-wordmark x-login-anim">RUTINA</h1>
+            <p className="x-login-anim x-login-anim--d1">Jadwal pribadi dan bersama, rapi di satu tempat.</p>
+          </div>
+          <div className="x-login-form x-login-sheet x-login-fade">
             <LoginForm idp="m" />
           </div>
         </div>
@@ -167,15 +176,26 @@ export default function LoginPage() {
       <div className="r-desktop">
         <div className="x-login-split">
           <div className="x-login-brand">
-            <Asterisk className="x-ast x-deco" />
-            <h1 className="x-wordmark" style={{ position: "relative" }}>
+            <span className="x-ast-float x-ast-f1" aria-hidden="true">
+              <Asterisk />
+            </span>
+            <span className="x-ast-float x-ast-f2" aria-hidden="true">
+              <Asterisk />
+            </span>
+            <span className="x-ast-float x-ast-f3" aria-hidden="true">
+              <Asterisk />
+            </span>
+            <span className="x-ast-float x-ast-f4" aria-hidden="true">
+              <Asterisk />
+            </span>
+            <h1 className="x-wordmark x-login-anim" style={{ position: "relative" }}>
               RUTINA
             </h1>
-            <p style={{ position: "relative", fontSize: 17, marginTop: 10, maxWidth: 320 }}>
+            <p className="x-login-anim x-login-anim--d1" style={{ position: "relative", fontSize: 17, marginTop: 10, maxWidth: 320 }}>
               Jadwal pribadi dan bersama, rapi di satu tempat. Kalender BEM FT, Kelompok 10 MPTI, dan UKM Futsal.
             </p>
           </div>
-          <div className="x-login-form">
+          <div className="x-login-form x-login-fade">
             <h2 className="x-h">Masuk ke RUTINA</h2>
             <p className="x-sub">Kelompok 10 MPTI, Undip</p>
             <div style={{ marginTop: 24 }}>
