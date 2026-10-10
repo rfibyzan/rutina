@@ -69,10 +69,12 @@ function TaskCard({
       className={`x-check x-rise x-task-card${leaving ? " is-leaving" : ""}`}
       style={
         {
-          border: "var(--x-border)",
+          border: "2px dashed var(--c, var(--muted))",
+          borderLeft: "5px solid var(--c, var(--muted))",
           borderRadius: "var(--x-radius)",
           padding: "10px 12px",
           cursor: "pointer",
+          ["--c" as string]: task.groupColor,
           ["--i" as string]: index,
         } as React.CSSProperties
       }

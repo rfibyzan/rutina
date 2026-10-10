@@ -11,7 +11,7 @@ import {
   StatusChip,
 } from "@/components/ui";
 import { EventEditForm } from "@/components/event-edit-form";
-import { TaskDetail } from "@/components/task-detail";
+import { TaskDetail, TaskDetailBody } from "@/components/task-detail";
 import { DesktopShell, MobileShell } from "@/components/shell";
 import { DatePicker } from "@/components/date-picker";
 import { layoutDay, type DaySrc } from "@/components/cal-layout";
@@ -127,7 +127,9 @@ export default function KalenderPage() {
   const [query, setQuery] = useState("");
   const [panelId, setPanelId] = useState<string | null>(null);
   const [panelEditing, setPanelEditing] = useState(false);
+  const [panelTaskId, setPanelTaskId] = useState<string | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
+  const [alldayOpen, setAlldayOpen] = useState<string | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [filter, setFilter] = useState<CalFilter>(DEFAULT_FILTER);
@@ -268,20 +270,22 @@ export default function KalenderPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekStart]);
 
-  // Tutup popover +N / grup tugas dengan Esc / klik luar.
+  // Tutup popover +N / grup tugas / tenggat hari ini dengan Esc / klik luar.
   useEffect(() => {
-    if (!overflowOpen && !groupOpen) return;
+    if (!overflowOpen && !groupOpen && !alldayOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setOverflowOpen(null);
         setGroupOpen(null);
+        setAlldayOpen(null);
       }
     };
     const onClick = (e: MouseEvent) => {
       const el = e.target as HTMLElement;
-      if (!el.closest(".x-more-pop") && !el.closest(".x-more") && !el.closest(".x-tgroup") && !el.closest(".x-tg-pop")) {
+      if (!el.closest(".x-more-pop") && !el.closest(".x-more") && !el.closest(".x-tgroup") && !el.closest(".x-tg-pop") && !el.closest(".x-allday-pop") && !el.closest(".x-allday-more")) {
         setOverflowOpen(null);
         setGroupOpen(null);
+        setAlldayOpen(null);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -290,7 +294,23 @@ export default function KalenderPage() {
       window.removeEventListener("keydown", onKey);
       document.removeEventListener("mousedown", onClick);
     };
-  }, [overflowOpen, groupOpen]);
+  }, [overflowOpen, groupOpen, alldayOpen]);
+
+  const isDesktop = () => typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches;
+
+  // B: klik tugas membuka detail di panel kanan (desktop) atau modal/sheet (mobile).
+  const openTask = (id: string) => {
+    if (isDesktop()) {
+      setPanelId(null);
+      setPanelTaskId(id);
+    } else {
+      setTaskId(id);
+    }
+  };
+  const openEvent = (id: string) => {
+    setPanelTaskId(null);
+    setPanelId(id);
+  };
 
   const allGroups = useMemo(() => {
     const map = new Map<string, string>();
@@ -402,11 +422,44 @@ export default function KalenderPage() {
   const byId = useMemo(() => Object.fromEntries(events.map((e) => [e.id, e])), [events]);
   const taskById = useMemo(() => Object.fromEntries(tasks.map((t) => [t.id, t])), [tasks]);
 
-  // Panel detail: hanya event minggu yang tampil. Jangan ambil dari minggu lain.
+  // A4: tugas "tenggat hari ini" = bertenggat 23:59 pada hari itu. Tampil di
+  // baris all-day, tidak digambar lagi di grid jam.
+  const isAllDayTask = (t: TaskItem): boolean => taskHM(t) === "23:59";
+  const allDayByDay = useMemo(() => {
+    const map = new Map<string, TaskItem[]>();
+    for (const t of weekListTasks) {
+      if (!isAllDayTask(t)) continue;
+      const d = taskDate(t);
+      if (!d) continue;
+      const k = dateKey(d);
+      const list = map.get(k) ?? [];
+      list.push(t);
+      map.set(k, list);
+    }
+    for (const list of map.values()) list.sort((a, b) => a.title.localeCompare(b.title));
+    return map;
+  }, [weekListTasks]);
+  const hasAllDay = allDayByDay.size > 0;
+  // Tugas grid = visible minggu ini minus yang sudah di baris all-day.
+  const gridTasksByDay = useMemo(() => {
+    const map = new Map<string, TaskItem[]>();
+    for (const t of weekListTasks) {
+      if (isAllDayTask(t)) continue;
+      const d = taskDate(t);
+      if (!d) continue;
+      const k = dateKey(d);
+      const list = map.get(k) ?? [];
+      list.push(t);
+      map.set(k, list);
+    }
+    return map;
+  }, [weekListTasks]);
+
+  // Panel detail: hanya event/tugas minggu yang tampil. Jangan ambil dari minggu lain.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (panelId === null && weekListEvents.length > 0) setPanelId(weekListEvents[0].id);
-  }, [panelId, weekListEvents]);
+    if (panelId === null && panelTaskId === null && weekListEvents.length > 0) setPanelId(weekListEvents[0].id);
+  }, [panelId, panelTaskId, weekListEvents]);
   useEffect(() => {
     if (panelId === null) return;
     const cur = byId[panelId];
@@ -419,6 +472,16 @@ export default function KalenderPage() {
       setPanelId(null);
     }
   }, [panelId, byId, weekListEvents, weekKeySet]);
+  useEffect(() => {
+    if (panelTaskId === null) return;
+    const cur = taskById[panelTaskId];
+    const d = cur ? taskDate(cur) : null;
+    const inWeek = !!cur && !!d && weekKeySet.has(dateKey(d));
+    if (!cur || !inWeek) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPanelTaskId(null);
+    }
+  }, [panelTaskId, taskById, weekKeySet]);
 
   // Agenda berikutnya di luar minggu tampil (untuk pesan + tombol Lompat).
   const nextAgenda = useMemo(() => {
@@ -478,6 +541,7 @@ export default function KalenderPage() {
   const dayTasks = useMemo(() => tasksByDate.get(selected) ?? [], [tasksByDate, selected]);
 
   const panel: EventItem | undefined = panelId ? byId[panelId] : undefined;
+  const panelTask = panelTaskId ? taskById[panelTaskId] : undefined;
   const [nowMs, setNowMs] = useState<number | null>(null);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -732,7 +796,7 @@ export default function KalenderPage() {
       ) : (
         <div className="x-card">
           {dayEvents.slice(0, 50).map((e, i) => (
-            <Link key={e.id} href={`/event/${e.id}`} className="x-mini x-rise" style={{ ["--c" as string]: e.groupColor, ["--i" as string]: i, textDecoration: "none", color: "inherit" }}>
+            <Link key={e.id} href={`/event/${e.id}`} className="x-mini x-mini--event x-rise" style={{ ["--c" as string]: e.groupColor, ["--i" as string]: i, textDecoration: "none", color: "inherit" }}>
               <i />
               <b>{e.start}</b>
               {e.title}
@@ -743,14 +807,14 @@ export default function KalenderPage() {
               key={t.id}
               role="button"
               tabIndex={0}
-              onClick={() => setTaskId(t.id)}
+              onClick={() => openTask(t.id)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
-                  setTaskId(t.id);
+                  openTask(t.id);
                 }
               }}
-              className={`x-mini x-rise${t.done ? " is-done" : ""}`}
+              className={`x-mini x-mini--task x-rise${t.done ? " is-done" : ""}`}
               style={{ ["--c" as string]: t.groupColor, ["--i" as string]: dayEvents.length + i, cursor: "pointer" }}
             >
               <input
@@ -790,7 +854,7 @@ export default function KalenderPage() {
   );
 
   const slotNew = (day: Date, ev: React.MouseEvent) => {
-    if ((ev.target as HTMLElement).closest(".x-ev") || (ev.target as HTMLElement).closest(".x-task") || (ev.target as HTMLElement).closest(".x-tgroup") || (ev.target as HTMLElement).closest(".x-tg-pop") || (ev.target as HTMLElement).closest(".x-more") || (ev.target as HTMLElement).closest(".x-more-pop")) return;
+    if ((ev.target as HTMLElement).closest(".x-ev") || (ev.target as HTMLElement).closest(".x-task") || (ev.target as HTMLElement).closest(".x-tpill") || (ev.target as HTMLElement).closest(".x-tgroup") || (ev.target as HTMLElement).closest(".x-tg-pop") || (ev.target as HTMLElement).closest(".x-more") || (ev.target as HTMLElement).closest(".x-more-pop") || (ev.target as HTMLElement).closest(".x-allday")) return;
     const rect = (ev.currentTarget as HTMLElement).getBoundingClientRect();
     const hour = Math.min(23, Math.max(0, Math.floor((ev.clientY - rect.top) / hourHeight)));
     const pad = (n: number) => String(n).padStart(2, "0");
@@ -816,7 +880,7 @@ export default function KalenderPage() {
         type="button"
         className={`x-ev${e.status === "pending" ? " x-ev--wait" : ""}${panelId === e.id ? " is-sel" : ""}${narrow ? " is-narrow" : ""}`}
         style={{ ...ps(p), ["--c" as string]: e.groupColor } as React.CSSProperties}
-        onClick={(ev) => { ev.stopPropagation(); setPanelId(e.id); }}
+        onClick={(ev) => { ev.stopPropagation(); openEvent(e.id); }}
         aria-label={`${e.title} ${e.start}-${e.end}`}
       >
         <b>{e.title}</b>
@@ -834,20 +898,28 @@ export default function KalenderPage() {
     );
   };
 
-  const renderTask = (t: TaskItem, p: Place, ps: PlaceStyle) => {
-    const narrow = p.colCount > 1;
+  // A2: pill tugas tipis menempel di sisi kanan kolom (±60% lebar),
+  // z-index di atas blok event, top = jam tenggat.
+  const taskTop = (mins: number): number => {
+    const h = 20;
+    let t = (mins / 60) * hourHeight;
+    if (t < 0) t = 0;
+    if (t + h > gridH) t = Math.max(0, gridH - h);
+    return t;
+  };
+  const renderTask = (t: TaskItem, topPx: number) => {
     return (
       <div
         key={t.id}
-        className={`x-task${t.done ? " is-done" : ""}${narrow ? " is-narrow" : ""}`}
-        style={{ ...ps(p), ["--c" as string]: t.groupColor, cursor: "pointer" } as React.CSSProperties}
-        onClick={(ev) => { ev.stopPropagation(); setTaskId(t.id); }}
+        className={`x-task x-tpill${t.done ? " is-done" : ""}${panelTaskId === t.id ? " is-sel" : ""}`}
+        style={{ top: `${topPx}px`, ["--c" as string]: t.groupColor, cursor: "pointer" } as React.CSSProperties}
+        onClick={(ev) => { ev.stopPropagation(); openTask(t.id); }}
         role="button"
         tabIndex={0}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
-            setTaskId(t.id);
+            openTask(t.id);
           }
         }}
         aria-label={`Tenggat ${t.title} ${taskHM(t)}`}
@@ -860,48 +932,52 @@ export default function KalenderPage() {
           onClick={(ev) => ev.stopPropagation()}
         />
         <span className="x-task-title">{t.title}</span>
-        {!narrow && !isCompact && <time>{`Tenggat ${taskHM(t)}`}</time>}
       </div>
     );
   };
 
+  // A3: pengelompokan per slot 30 menit (00-29, 30-59) per hari.
   const renderTaskGroup = (
     list: TaskItem[],
-    p: Place,
-    ps: PlaceStyle,
+    topPx: number,
     dayKey: string,
-    startMin: number
+    slot: number
   ) => {
-    const hm = list.length > 0 ? taskHM(list[0]) : "--:--";
-    const color = list[0]?.groupColor ?? "var(--primary)";
-    const open = groupOpen !== null && groupOpen.day === dayKey && groupOpen.startMin === startMin;
-    const gid = `tg-${dayKey}-${startMin}`;
+    const sorted = [...list].sort((a, b) => taskHM(a).localeCompare(taskHM(b)));
+    const first = taskHM(sorted[0]);
+    const last = taskHM(sorted[sorted.length - 1]);
+    const range = first === last ? first : `${first}–${last}`;
+    const label = `${sorted.length} tugas · ${range}`;
+    const color = sorted[0]?.groupColor ?? "var(--primary)";
+    const open = groupOpen !== null && groupOpen.day === dayKey && groupOpen.startMin === slot;
+    const gid = `tg-${dayKey}-${slot}`;
+    const startMin = slot * 30;
     return (
-      <div key={gid} style={{ ...ps(p), position: "absolute" }}>
+      <div key={gid} className="x-tpill-wrap" style={{ top: `${topPx}px` }}>
         <button
           type="button"
-          className="x-task x-tgroup"
-          style={{ ["--c" as string]: color, position: "absolute", inset: 0 } as React.CSSProperties}
+          className="x-task x-tgroup x-tpill"
+          style={{ ["--c" as string]: color } as React.CSSProperties}
           onClick={(ev) => {
             ev.stopPropagation();
             setOverflowOpen(null);
-            setGroupOpen(open ? null : { day: dayKey, startMin });
+            setGroupOpen(open ? null : { day: dayKey, startMin: slot });
           }}
           aria-expanded={open}
-          aria-label={`${list.length} tugas tenggat ${hm}`}
+          aria-label={`${label}`}
         >
           <span aria-hidden="true">☑</span>
-          <span className="x-task-title">{`${list.length} tugas · ${hm}`}</span>
+          <span className="x-task-title">{label}</span>
         </button>
         {open && (
           <div
             className="x-more-pop x-tg-pop"
             role="dialog"
-            aria-label={`${list.length} tugas tenggat ${hm}`}
-            style={{ ...(startMin > 720 ? { bottom: "calc(100% + 4px)" } : { top: "calc(100% + 4px)" }), left: 0, right: "auto", minWidth: 240, maxWidth: 300 }}
+            aria-label={label}
+            style={{ ...(startMin > 720 ? { bottom: "calc(100% + 4px)" } : { top: "calc(100% + 4px)" }), left: "auto", right: 0, minWidth: 240, maxWidth: 300 }}
             onClick={(ev) => ev.stopPropagation()}
           >
-            {list.map((t) => (
+            {sorted.map((t) => (
               <div key={t.id} className="x-tg-row">
                 <input
                   type="checkbox"
@@ -916,7 +992,7 @@ export default function KalenderPage() {
                   onClick={(ev) => {
                     ev.stopPropagation();
                     setGroupOpen(null);
-                    setTaskId(t.id);
+                    openTask(t.id);
                   }}
                 >
                   {t.title}
@@ -935,42 +1011,15 @@ export default function KalenderPage() {
       const d = startDate(e);
       return d !== null && dateKey(d) === dayKey;
     });
-    const tks = weekTasks.filter((t) => {
-      const d = taskDate(t);
-      return d !== null && dateKey(d) === dayKey;
-    });
+    // A1: layout kolom HANYA menghitung event.
     const minEv = isCompact ? 22 : 28;
-    const minTk = isCompact ? 22 : 36;
-    // Grup tugas: tenggat menit sama di hari sama jadi satu kartu.
-    const byMin = new Map<number, TaskItem[]>();
-    for (const t of tks) {
-      const d = taskDate(t);
-      const sMin = d ? d.getHours() * 60 + d.getMinutes() : 0;
-      const list = byMin.get(sMin) ?? [];
-      list.push(t);
-      byMin.set(sMin, list);
-    }
-    const groupMap = new Map<string, TaskItem[]>();
-    const taskSrc: DaySrc[] = [];
-    for (const [sMin, list] of byMin) {
-      if (list.length > 1) {
-        const id = `tg-${dayKey}-${sMin}`;
-        groupMap.set(id, list);
-        taskSrc.push({ id, kind: "taskGroup" as const, startMin: sMin, endMin: sMin + 30, minH: minTk, taskIds: list.map((t) => t.id) });
-      } else {
-        taskSrc.push({ id: list[0].id, kind: "task" as const, startMin: sMin, endMin: sMin + 30, minH: minTk });
-      }
-    }
-    const src: DaySrc[] = [
-      ...evs.map((e) => {
-        const s = startDate(e);
-        const en = endDate(e);
-        const sMin = s ? s.getHours() * 60 + s.getMinutes() : 0;
-        const eMin = en ? en.getHours() * 60 + en.getMinutes() : sMin + 60;
-        return { id: e.id, kind: "event" as const, startMin: sMin, endMin: Math.max(eMin, sMin + 30), minH: minEv };
-      }),
-      ...taskSrc,
-    ];
+    const src: DaySrc[] = evs.map((e) => {
+      const s = startDate(e);
+      const en = endDate(e);
+      const sMin = s ? s.getHours() * 60 + s.getMinutes() : 0;
+      const eMin = en ? en.getHours() * 60 + en.getMinutes() : sMin + 60;
+      return { id: e.id, kind: "event" as const, startMin: sMin, endMin: Math.max(eMin, sMin + 30), minH: minEv };
+    });
     const { placed, clusters } = layoutDay(src, hourHeight, gridH);
     const effW = Math.max(bodyW, 720);
     const dayW = bodyW > 0 ? (effW - 48) / 7 : 160;
@@ -979,79 +1028,30 @@ export default function KalenderPage() {
 
     const renderSingle = (s: (typeof placed)[number], col: number, colCount: number) => {
       const pp = { ...s, col, colCount };
-      if (s.kind === "event") {
-        const e = byId[s.id];
-        if (!e) return null;
-        return renderEvent(e, pp, placeStyleOf);
-      }
-      if (s.kind === "taskGroup") {
-        const list = groupMap.get(s.id);
-        if (!list) return null;
-        const d0 = taskDate(list[0]);
-        const sMin = d0 ? d0.getHours() * 60 + d0.getMinutes() : 0;
-        return renderTaskGroup(list, pp, placeStyleOf, dayKey, sMin);
-      }
-      const t = taskById[s.id];
-      if (!t) return null;
-      return renderTask(t, pp, placeStyleOf);
+      const e = byId[s.id];
+      if (!e) return null;
+      return renderEvent(e, pp, placeStyleOf);
     };
 
     const popRows = (ordered: (typeof placed)[number][]) => {
       const rows: React.ReactNode[] = [];
       for (const s of ordered) {
-        if (s.kind === "event") {
-          const o = byId[s.id];
-          if (!o) continue;
-          rows.push(
-            <button
-              key={s.id}
-              type="button"
-              onClick={(ev) => {
-                ev.stopPropagation();
-                setOverflowOpen(null);
-                setGroupOpen(null);
-                setPanelId(s.id);
-              }}
-            >
-              📅 {o.title}
-            </button>
-          );
-        } else if (s.kind === "taskGroup") {
-          const list = groupMap.get(s.id) ?? [];
-          for (const t of list) {
-            rows.push(
-              <button
-                key={t.id}
-                type="button"
-                onClick={(ev) => {
-                  ev.stopPropagation();
-                  setOverflowOpen(null);
-                  setGroupOpen(null);
-                  setTaskId(t.id);
-                }}
-              >
-                ☐ {t.title} · {taskHM(t)}
-              </button>
-            );
-          }
-        } else {
-          const o = taskById[s.id];
-          if (!o) continue;
-          rows.push(
-            <button
-              key={s.id}
-              type="button"
-              onClick={(ev) => {
-                ev.stopPropagation();
-                setOverflowOpen(null);
-                setGroupOpen(null);
-                setTaskId(s.id);
-              }}
-            >
-              ☐ {o.title} · {taskHM(o)}
-            </button>
-          );
-        }
+        const o = byId[s.id];
+        if (!o) continue;
+        rows.push(
+          <button
+            key={s.id}
+            type="button"
+            onClick={(ev) => {
+              ev.stopPropagation();
+              setOverflowOpen(null);
+              setGroupOpen(null);
+              openEvent(s.id);
+            }}
+          >
+            📅 {o.title}
+          </button>
+        );
       }
       return rows;
     };
@@ -1127,6 +1127,29 @@ export default function KalenderPage() {
         }
       } else {
         nodes.push(renderSingle(p, p.col, p.colCount));
+      }
+    }
+    // A2+A3: tugas tidak ikut kolom; pill kanan per slot 30 menit.
+    const tks = gridTasksByDay.get(dayKey) ?? [];
+    const bySlot = new Map<number, TaskItem[]>();
+    for (const t of tks) {
+      const d = taskDate(t);
+      if (!d) continue;
+      const mins = d.getHours() * 60 + d.getMinutes();
+      const slot = Math.floor(mins / 30);
+      const list = bySlot.get(slot) ?? [];
+      list.push(t);
+      bySlot.set(slot, list);
+    }
+    for (const [slot, list] of [...bySlot.entries()].sort((a, b) => a[0] - b[0])) {
+      const sorted = [...list].sort((a, b) => taskHM(a).localeCompare(taskHM(b)));
+      const d0 = taskDate(sorted[0]);
+      const mins0 = d0 ? d0.getHours() * 60 + d0.getMinutes() : slot * 30;
+      const top = taskTop(mins0);
+      if (sorted.length > 1) {
+        nodes.push(renderTaskGroup(sorted, top, dayKey, slot));
+      } else {
+        nodes.push(renderTask(sorted[0], top));
       }
     }
     // Garis waktu sekarang.
@@ -1221,6 +1244,82 @@ export default function KalenderPage() {
             <span />
             {weekHead}
           </div>
+          {hasAllDay && (
+            <div className="x-allday" aria-label="Tenggat hari ini">
+              <span className="x-allday-label">Tenggat</span>
+              {weekDays.map((day) => {
+                const k = dateKey(day);
+                const list = allDayByDay.get(k) ?? [];
+                if (list.length === 0) return <div key={k} className="x-allday-cell" />;
+                const show = list.slice(0, 2);
+                const rest = list.length - show.length;
+                const open = alldayOpen === k;
+                return (
+                  <div key={k} className="x-allday-cell">
+                    {show.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        className={`x-allday-pill${t.done ? " is-done" : ""}${panelTaskId === t.id ? " is-sel" : ""}`}
+                        style={{ ["--c" as string]: t.groupColor } as React.CSSProperties}
+                        onClick={(ev) => { ev.stopPropagation(); setAlldayOpen(null); openTask(t.id); }}
+                        aria-label={`Tenggat ${t.title}`}
+                        title={t.title}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={t.done}
+                          onChange={() => toggleTask(t.id)}
+                          onClick={(ev) => ev.stopPropagation()}
+                          aria-label={`Selesaikan ${t.title}`}
+                          tabIndex={-1}
+                        />
+                        <span>{t.title}</span>
+                      </button>
+                    ))}
+                    {rest > 0 && (
+                      <button
+                        type="button"
+                        className="x-allday-more"
+                        aria-expanded={open}
+                        aria-label={`Tampilkan ${rest} tugas tenggat lainnya`}
+                        onClick={(ev) => { ev.stopPropagation(); setGroupOpen(null); setOverflowOpen(null); setAlldayOpen(open ? null : k); }}
+                      >
+                        +{rest} lainnya
+                      </button>
+                    )}
+                    {open && (
+                      <div className="x-more-pop x-allday-pop" role="dialog" aria-label="Tugas tenggat hari ini" onClick={(ev) => ev.stopPropagation()}>
+                        {list.map((t) => (
+                          <div key={t.id} className="x-tg-row">
+                            <input
+                              type="checkbox"
+                              checked={t.done}
+                              onChange={() => toggleTask(t.id)}
+                              onClick={(ev) => ev.stopPropagation()}
+                              aria-label={`Selesaikan ${t.title}`}
+                            />
+                            <button
+                              type="button"
+                              className="x-tg-title"
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                setAlldayOpen(null);
+                                openTask(t.id);
+                              }}
+                            >
+                              {t.title}
+                            </button>
+                            <PriorityChip value={t.priority} short />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <div className="x-wk-body" ref={weekScrollRef}>
             <div className="x-hrs">
               {HOURS.map((h, i) => (
@@ -1259,11 +1358,16 @@ export default function KalenderPage() {
             </div>
           )}
         </div>
-        <aside className="x-panel x-detail" aria-label="Detail event">
+        <aside className="x-panel x-detail" aria-label="Detail agenda">
           {!ready ? (
             <LoadingSkeleton />
           ) : loadError ? (
             <ErrorState text={loadError} onRetry={reload} />
+          ) : panelTask ? (
+            <>
+              <p className="x-sec" style={{ marginTop: 0 }}>Detail Tugas</p>
+              <TaskDetailBody taskId={panelTask.id} onDeleted={() => setPanelTaskId(null)} idPrefix="pn" />
+            </>
           ) : panel ? (
             <>
               <h2>{panel.title}</h2>
@@ -1332,7 +1436,7 @@ export default function KalenderPage() {
               </p>
             </>
           ) : (
-            <EmptyState text="Pilih event di kalender untuk melihat detail." />
+            <EmptyState text="Pilih event atau tugas untuk melihat detail." />
           )}
         </aside>
       </div>
